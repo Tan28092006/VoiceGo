@@ -162,11 +162,14 @@ def resolve_destination(text, user_lat=None, user_lng=None):
                 if hit[2]:
                     address = hit[2]  # use Nominatim's REAL address (matches coords)
                 break
-    if not coords and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
+    # Only trust model coords from GROUNDED search (real). NEVER use plain-Groq
+    # coords — they are hallucinated (audit showed 10-21km errors). If Nominatim
+    # can't place it, return not_found so the agent asks again (safer than wrong).
+    if not coords and via == "grounded" and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
         coords = (float(g_lat), float(g_lng))
-        source = via  # "grounded" or "groq"
+        source = "grounded"
     if not coords:
-        return {"ok": False, "reason": "no_coords", "name": name, "address": address}
+        return {"ok": False, "reason": "not_found", "name": name, "address": address}
 
     lat, lng = coords
     confidence = float(g.get("confidence", 0.6))
