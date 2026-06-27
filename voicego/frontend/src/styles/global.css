@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* global.css — Global layout, animations, and utilities
  * Extracted from voicego/css/voice.css (non-component-specific rules)
  */
@@ -54,3 +58,5 @@ body {
 .hidden {
   display: none;
 }
+#root { display: flex; flex-direction: column; flex: 1; min-height: 100vh; }  
+ 
