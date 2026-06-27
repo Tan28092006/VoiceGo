@@ -58,8 +58,13 @@ Các endpoint chính:
 - `GET /api/db/status` — kiểm tra MongoDB + số lượng collection.
 - `GET/PUT /api/me/accessibility-profile` — profile khuyết tật của hành khách demo.
 - `GET /api/places/accessibility?lat=10.7769&lng=106.7009` — điểm đến gần đó kèm accessibility score.
-- `POST /api/reports` — báo cáo lối vào/điểm đến accessible và cộng điểm thưởng.
+- `POST /api/reports` — tạo report accessibility ở trạng thái `pending`.
+- `GET /api/admin/reports?status=pending` — admin xem report chờ duyệt.
+- `PATCH /api/admin/reports/{id}/verify` — duyệt report, cập nhật `accessibility_places`, cộng 1 điểm.
+- `PATCH /api/admin/reports/{id}/reject` — từ chối report, không cộng điểm.
 - `POST /api/rides` — tạo ride request thủ công.
+- `GET /api/rides/{id}` — lấy trạng thái chuyến đi.
+- `PATCH /api/rides/{id}/status` — cập nhật lifecycle: `accepted`, `arrived`, `in_progress`, `completed`, ...
 - Agent `book_ride` tự tạo `ride_requests` khi người dùng xác nhận đặt xe bằng giọng nói.
 
 ### Frontend

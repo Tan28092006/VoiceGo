@@ -20,10 +20,15 @@ from db import (
     create_accessibility_report,
     create_ride_request,
     find_nearby_accessible_places,
+    get_ride_request,
     get_user,
+    list_reports,
     mongo_status,
+    reject_report,
     seed_demo_data,
+    update_ride_status,
     update_accessibility_profile,
+    verify_report,
 )
 
 app = FastAPI(title="VoiceGo API", version="2.0.0")
@@ -77,7 +82,20 @@ class AccessibilityReportRequest(BaseModel):
     lng: float
     disability_accessible_entrance: bool = False
     accessibility_score: int = 3
-    reward_points: int = 10
+    reward_points: int = 1
+
+
+class RideStatusRequest(BaseModel):
+    status: str
+
+
+class RejectReportRequest(BaseModel):
+    admin_id: str | None = None
+    reason: str = ""
+
+
+class VerifyReportRequest(BaseModel):
+    admin_id: str | None = None
 
 
 def db_response(fn, *args, **kwargs):
@@ -87,6 +105,11 @@ def db_response(fn, *args, **kwargs):
         return JSONResponse(
             {"ok": False, "error": "database_unavailable", "reason": str(exc)},
             status_code=503,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            {"ok": False, "error": "bad_request", "reason": str(exc)},
+            status_code=400,
         )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse(
@@ -149,6 +172,26 @@ def create_ride(req: RideRequestPayload):
     return db_response(create_ride_request, **req.model_dump())
 
 
+@app.get("/api/rides/{ride_id}")
+def get_ride(ride_id: str):
+    ride = db_response(get_ride_request, ride_id)
+    if isinstance(ride, JSONResponse):
+        return ride
+    if not ride:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    return ride
+
+
+@app.patch("/api/rides/{ride_id}/status")
+def patch_ride_status(ride_id: str, req: RideStatusRequest):
+    ride = db_response(update_ride_status, ride_id, req.status)
+    if isinstance(ride, JSONResponse):
+        return ride
+    if not ride:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    return ride
+
+
 @app.patch("/api/rides/{ride_id}/driver-alert/ack")
 def ack_driver_alert(ride_id: str):
     return db_response(acknowledge_driver_alert, ride_id)
@@ -159,6 +202,32 @@ def create_report(req: AccessibilityReportRequest):
     payload = req.model_dump()
     reporter_id = payload.pop("reporter_id")
     return db_response(create_accessibility_report, reporter_id, payload)
+
+
+@app.get("/api/admin/reports")
+def admin_reports(status: str | None = None, limit: int = 100):
+    return db_response(list_reports, status, limit)
+
+
+@app.patch("/api/admin/reports/{report_id}/verify")
+def admin_verify_report(report_id: str, req: VerifyReportRequest | None = None):
+    admin_id = req.admin_id if req else None
+    report = db_response(verify_report, report_id, admin_id)
+    if isinstance(report, JSONResponse):
+        return report
+    if not report:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    return report
+
+
+@app.patch("/api/admin/reports/{report_id}/reject")
+def admin_reject_report(report_id: str, req: RejectReportRequest):
+    report = db_response(reject_report, report_id, req.admin_id, req.reason)
+    if isinstance(report, JSONResponse):
+        return report
+    if not report:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    return report
 
 
 @app.post("/api/voice/stt")
