@@ -1,12 +1,13 @@
 """
 geocode.py — Trustworthy destination resolution for arbitrary place names.
 
-Pipeline (LLM at the edges, deterministic source for the numbers):
-  1. Gemini + Google Search grounding: spoken place name -> REAL full address
-     (grounded in live search, with the post-2025 admin reorg) + a candidate coord.
-  2. Nominatim (OpenStreetMap): geocode that clean address -> authoritative coords.
-  3. Cross-validate: prefer Nominatim; if it misses, fall back to the grounded
-     coord (lower confidence). Distance to the user's GPS is read back for safety.
+Layered fallback (so a real place still resolves when one source is down):
+  1. Gemini + Google Search grounding -> REAL full address (live, post-2025 admin).
+  2. If grounding is unavailable (503/quota): plain Gemini (no tools) -> best-guess
+     address from its knowledge.
+  3. Geocode the resulting address via Nominatim (authoritative coords); else use
+     the model's coords (lower confidence).
+  4. If no model output at all: Nominatim directly on the raw text.
 
 The LLM never invents coordinates as ground truth — coords come from a geocoder,
 and the booking only proceeds after the user confirms the read-back address.
@@ -32,8 +33,8 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def _gemini_grounded(prompt):
-    """Call Gemini with Google Search grounding; retry on transient 503/overload."""
+def _gemini_call(prompt, grounded, retries=2):
+    """One Gemini call (optionally with Google Search grounding); retry on 503/429."""
     if not GEMINI_API_KEY:
         return None
     try:
@@ -43,20 +44,33 @@ def _gemini_grounded(prompt):
         return None
 
     client = genai.Client(api_key=GEMINI_API_KEY)
-    cfg = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
-    )
-    for i in range(4):
+    cfg = None
+    if grounded:
+        cfg = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
+
+    for i in range(retries):
         try:
             r = client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=cfg)
             return (r.text or "").strip()
         except Exception as e:  # noqa: BLE001
             msg = str(e)
             if any(k in msg for k in ("503", "UNAVAILABLE", "overload", "429", "RESOURCE_EXHAUSTED")):
-                time.sleep(1.2 * (i + 1))
+                time.sleep(0.5 * (i + 1))
                 continue
             return None
     return None
+
+
+def _parse_json(raw):
+    if not raw:
+        return None
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
 
 
 def _nominatim(address):
@@ -75,26 +89,19 @@ def _nominatim(address):
     return None
 
 
-def resolve_destination(text, user_lat=None, user_lng=None):
-    """
-    Resolve a spoken place name to a real address + coordinates.
-    Returns a dict (ok True/False). Never fabricates coords as ground truth.
-    """
-    if not text.strip():
-        return {"ok": False, "reason": "empty"}
-
+def _build_prompt(text, user_lat, user_lng, grounded):
     loc_hint = ""
     if user_lat is not None and user_lng is not None:
         loc_hint = (
-            f"GPS hiện tại của người dùng: {user_lat}, {user_lng}. "
-            "Nếu địa điểm có NHIỀU chi nhánh/cơ sở, ưu tiên cơ sở GẦN GPS này nhất, "
+            f"Vị trí người dùng: {user_lat}, {user_lng}. "
+            "Nếu địa điểm có NHIỀU chi nhánh/cơ sở, ưu tiên cơ sở GẦN vị trí này nhất, "
             "và liệt kê các cơ sở khác vào 'alternatives'.\n"
         )
-
-    prompt = (
-        "Bạn là trợ lý định vị cho ứng dụng gọi xe. Hãy DÙNG TÌM KIẾM để tra địa chỉ THẬT.\n"
-        f'Người dùng muốn đến: "{text}"\n'
-        f"{loc_hint}"
+    how = ("Hãy DÙNG TÌM KIẾM để tra địa chỉ THẬT.\n" if grounded
+           else "Dựa trên hiểu biết của bạn về địa điểm ở Việt Nam, đưa địa chỉ đầy đủ nhất có thể.\n")
+    return (
+        "Bạn là trợ lý định vị cho ứng dụng gọi xe. " + how +
+        f'Người dùng muốn đến: "{text}"\n' + loc_hint +
         "Trả về DUY NHẤT một JSON (không giải thích):\n"
         '{"name":"<tên địa điểm>","full_address":"<địa chỉ đầy đủ kèm phường/quận/tỉnh>",'
         '"province":"<tỉnh/thành>","latitude":<số thập phân hoặc null>,'
@@ -102,54 +109,55 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         '"alternatives":["<chi nhánh khác nếu có>"]}'
     )
 
-    raw = _gemini_grounded(prompt)
-    if not raw:
-        return {"ok": False, "reason": "gemini_unavailable"}
 
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not m:
-        return {"ok": False, "reason": "parse_failed"}
-    try:
-        g = json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return {"ok": False, "reason": "parse_failed"}
+def resolve_destination(text, user_lat=None, user_lng=None):
+    """Resolve a spoken place name to a real address + coordinates (layered fallback)."""
+    if not text.strip():
+        return {"ok": False, "reason": "empty"}
+
+    # 1) grounded Gemini, then 2) plain Gemini.
+    g = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, True), grounded=True, retries=2))
+    via = "grounded"
+    if not g:
+        g = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, False), grounded=False, retries=1))
+        via = "plain"
+
+    # 3) No model output at all -> Nominatim directly on the raw text.
+    if not g:
+        coords = _nominatim(f"{text}, Thành phố Hồ Chí Minh, Việt Nam") or _nominatim(text)
+        if not coords:
+            return {"ok": False, "reason": "not_found"}
+        lat, lng = coords
+        dist = round(_haversine_km(user_lat, user_lng, lat, lng), 1) if user_lat is not None else None
+        return {"ok": True, "name": text, "address": text, "province": "", "lat": lat, "lng": lng,
+                "distanceKm": dist, "confidence": 0.4, "source": "nominatim_raw", "alternatives": []}
 
     address = g.get("full_address") or text
     name = g.get("name") or text
+    g_lat, g_lng = g.get("latitude"), g.get("longitude")
 
-    # Authoritative coords from Nominatim; grounded coords as fallback only.
     coords = _nominatim(address)
     source = "nominatim"
-    g_lat, g_lng = g.get("latitude"), g.get("longitude")
     if not coords and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
         coords = (float(g_lat), float(g_lng))
-        source = "gemini_grounded"
+        source = via  # "grounded" or "plain"
 
+    if not coords:
+        coords = _nominatim(f"{text}, Thành phố Hồ Chí Minh, Việt Nam")
+        source = "nominatim_raw"
     if not coords:
         return {"ok": False, "reason": "no_coords", "name": name, "address": address}
 
     lat, lng = coords
     confidence = float(g.get("confidence", 0.6))
-
-    # Cross-validate Nominatim vs grounded coord (if both exist).
     if source == "nominatim" and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
-        gap = _haversine_km(lat, lng, float(g_lat), float(g_lng))
-        if gap > 8:  # sources disagree a lot -> be cautious
+        if _haversine_km(lat, lng, float(g_lat), float(g_lng)) > 8:
             confidence = min(confidence, 0.5)
 
-    distance_km = None
-    if user_lat is not None and user_lng is not None:
-        distance_km = round(_haversine_km(user_lat, user_lng, lat, lng), 1)
+    distance_km = round(_haversine_km(user_lat, user_lng, lat, lng), 1) if user_lat is not None else None
 
     return {
-        "ok": True,
-        "name": name,
-        "address": address,
-        "province": g.get("province"),
-        "lat": lat,
-        "lng": lng,
-        "distanceKm": distance_km,
-        "confidence": confidence,
-        "source": source,
-        "alternatives": g.get("alternatives", []),
+        "ok": True, "name": name, "address": address, "province": g.get("province"),
+        "lat": lat, "lng": lng, "distanceKm": distance_km, "confidence": confidence,
+        "source": source, "alternatives": g.get("alternatives", []),
     }

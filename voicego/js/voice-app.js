@@ -22,13 +22,18 @@ const BACKEND_URL = (() => {
     return "";
 })();
 
+// Pickup is fixed (the demo has no live GPS): International University, Thủ Đức.
+const ORIGIN = { name: "Trường Đại học Quốc tế", lat: 10.8782, lng: 106.8012 };
+
 class VoiceBookingApp {
     constructor() {
         this.recorder = new VoiceRecorder();
         this.state = "idle"; // idle | listening | processing | confirming | booked
         this.pending = null;
-        this.originNode = nodes.find(n => n.id === "n1"); // default Bến Thành
+        this.origin = ORIGIN;          // fixed pickup
+        this.gps = { lat: ORIGIN.lat, lng: ORIGIN.lng }; // used for "nearest branch" proximity
         this.audio = new Audio();
+        this._streamTimer = null;
         this.routeMap = (typeof RouteMap !== "undefined" && document.getElementById("route-map"))
             ? new RouteMap("route-map") : null;
 
@@ -52,9 +57,10 @@ class VoiceBookingApp {
     }
 
     async init() {
+        const originBox = document.getElementById("origin-box");
+        if (originBox) originBox.textContent = this.origin.name;
         this.announce("Chào bạn.", "Chạm và giữ nửa dưới màn hình rồi nói điểm đến.", true);
         this._checkBackend();
-        this._initGeo();
     }
 
     // ----- Status + speech ---------------------------------------------------
@@ -113,21 +119,6 @@ class VoiceBookingApp {
         this.backendOk = ok;
     }
 
-    _initGeo() {
-        if (!navigator.geolocation) return;
-        navigator.geolocation.getCurrentPosition(
-            pos => {
-                this.gps = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                const snapped = snapToNearestNode(pos.coords.latitude, pos.coords.longitude);
-                if (snapped) {
-                    this.originNode = snapped;
-                    if (this.els.substatus) this.els.substatus.textContent += ` (Điểm đón: ${snapped.name})`;
-                }
-            },
-            () => { /* denied — keep default origin */ },
-            { timeout: 5000 }
-        );
-    }
 
     // ----- Live transcript (Web Speech API streams what the user is saying) ---
     _startLiveTranscript() {
@@ -237,44 +228,54 @@ class VoiceBookingApp {
         return understandCommand(transcript); // on-device fallback
     }
 
-    // ----- Understand -> route -> quote -------------------------------------
+    // ----- Understand -> resolve destination -> quote -----------------------
     async processText(transcript) {
         const u = await this._understand(transcript);
 
-        // Known place (in the 21-node demo graph) -> real route + price.
+        // Build a uniform destination {name, lat, lng, address?} from either the
+        // known-place list or the grounded geocoder. Pickup is fixed (ORIGIN).
+        let dest = null;
+        let geocoded = false;
         if (!u.needsRepeat && u.place.nodeId) {
-            const routes = findMultipleRoutes(this.originNode.id, u.place.nodeId, floodZones, vehicleConfig);
-            const route = routes.safest;
-            if (!route || route.error) {
-                this.state = "idle";
-                this.announce(`Không thể đến ${u.place.name} lúc này.`, "Bạn thử điểm khác giúp tôi nhé.", true);
-                return;
+            const node = u.place.node || nodes.find(n => n.id === u.place.nodeId);
+            if (node) dest = { name: u.place.name, lat: node.lat, lng: node.lng };
+        }
+        if (!dest) {
+            this.announce("Đang tìm địa điểm…", "");
+            const g = await this._geocode(transcript);
+            if (g && g.ok) {
+                dest = { name: g.name, address: g.address, lat: g.lat, lng: g.lng };
+                geocoded = true;
             }
-            const km = route.totalDistance / 1000;
-            const destNode = u.place.node || nodes.find(n => n.id === u.place.nodeId);
-            this.pending = { place: u.place, vehicle: u.vehicle, route, km, destNode };
-            if (this.routeMap && destNode) this.routeMap.showRoute(route, this.originNode, destNode);
-            this._announceQuote(true);
+        }
+
+        if (!dest) {
+            this.state = "idle";
+            this.announce(`Bạn nói: "${transcript}".`,
+                "Tôi chưa tìm được điểm đến. Bạn nói lại tên địa điểm rõ hơn giúp tôi.", true);
             return;
         }
 
-        // Not in the known list -> resolve an arbitrary place via grounded geocoding.
-        this.announce("Đang tìm địa điểm…", "");
-        const g = await this._geocode(transcript);
-        if (g && g.ok) {
-            const km = g.distanceKm != null ? g.distanceKm
-                : Graph.haversineDistance(this.originNode.lat, this.originNode.lng, g.lat, g.lng) / 1000;
-            this.pending = {
-                place: { name: g.name, address: g.address, lat: g.lat, lng: g.lng },
-                vehicle: u.vehicle, km, geocoded: true, confidence: g.confidence, source: g.source,
-            };
-            if (this.routeMap) this.routeMap.showPoint(this.originNode, g.lat, g.lng);
-            this._announceQuote(true);
-            return;
-        }
+        const km = Graph.haversineDistance(this.origin.lat, this.origin.lng, dest.lat, dest.lng) / 1000;
+        this.pending = { place: dest, vehicle: u.vehicle, km, geocoded };
 
-        this.state = "idle";
-        this.announce(`Bạn nói: "${transcript}".`, "Tôi chưa tìm được điểm đến. Bạn nói lại tên địa điểm rõ hơn giúp tôi.", true);
+        this._fillDestBox(dest);
+        if (this.routeMap) this.routeMap.showTrip(this.origin, dest);
+        this._announceQuote(true);
+    }
+
+    _fillDestBox(dest) {
+        const box = document.getElementById("dest-box");
+        if (!box) return;
+        box.textContent = dest.address || dest.name;
+        box.classList.remove("muted");
+    }
+
+    _resetDestBox() {
+        const box = document.getElementById("dest-box");
+        if (!box) return;
+        box.textContent = "Chưa có — hãy nói điểm đến";
+        box.classList.add("muted");
     }
 
     /** Resolve an arbitrary place name to a real address + coords (backend). */
@@ -285,7 +286,7 @@ class VoiceBookingApp {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: transcript, lat: this.gps?.lat, lng: this.gps?.lng }),
-                signal: AbortSignal.timeout(20000),
+                signal: AbortSignal.timeout(30000),
             });
             return await res.json();
         } catch (e) {
@@ -332,7 +333,7 @@ class VoiceBookingApp {
 
         // Mock driver assignment as the agent's final result.
         const driver = `Đã tìm thấy tài xế! Nguyễn Văn A · biển số 59-X1 234.56 · ` +
-                       `đến điểm đón ${this.originNode.name} trong 4 phút.`;
+                       `đến điểm đón ${this.origin.name} trong 4 phút.`;
         if (this.els.agentResult) this.els.agentResult.textContent = driver;
         const spinner = this.els.agentOverlay && this.els.agentOverlay.querySelector(".agent-spinner");
         if (spinner) spinner.style.display = "none";
@@ -349,38 +350,59 @@ class VoiceBookingApp {
     }
 
     _hideAgentOverlay() {
+        if (this._streamTimer) { clearTimeout(this._streamTimer); this._streamTimer = null; }
         if (this.els.agentOverlay) this.els.agentOverlay.classList.add("hidden");
     }
 
-    /** Stream the agent's booking narration token-by-token into the overlay. */
+    /**
+     * Stream the agent narration into the overlay with a SMOOTH typewriter:
+     * network chunks (which arrive in bursts) feed a buffer that a render loop
+     * drains char-by-char — so it reads continuously like ChatGPT, not in jumps.
+     */
     async _streamAgent(p) {
         const log = this.els.agentLog;
-        const write = (t) => { if (log) { log.textContent += t; log.scrollTop = log.scrollHeight; } };
+        if (log) log.textContent = "";
+        let buffer = "";
+        let finished = false;
+
+        const render = () => {
+            if (log && buffer.length) {
+                const take = Math.max(1, Math.ceil(buffer.length / 16)); // catch up on backlog
+                log.textContent += buffer.slice(0, take);
+                buffer = buffer.slice(take);
+                log.scrollTop = log.scrollHeight;
+            }
+            this._streamTimer = (!finished || buffer.length) ? setTimeout(render, 18) : null;
+        };
+        render();
+        const feed = (t) => { buffer += t; };
 
         if (!BACKEND_URL) {
             const steps = ["Đang khóa điểm đến…\n", "Đang tìm tài xế gần bạn…\n", "Đã tìm thấy tài xế phù hợp.\n"];
-            for (const s of steps) { await this._sleep(800); write(s); }
-            return;
-        }
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/agent/stream`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    place: p.place.name, address: p.place.address || "",
-                    vehicle: p.vehicle, km: p.km, price: p.price || 0,
-                }),
-            });
-            const reader = res.body.getReader();
-            const dec = new TextDecoder();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                write(dec.decode(value, { stream: true }));
+            for (const s of steps) { await this._sleep(600); feed(s); }
+        } else {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/agent/stream`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        place: p.place.name, address: p.place.address || "",
+                        vehicle: p.vehicle, km: p.km, price: p.price || 0,
+                    }),
+                });
+                const reader = res.body.getReader();
+                const dec = new TextDecoder();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    feed(dec.decode(value, { stream: true }));
+                }
+            } catch (e) {
+                feed("Đang hoàn tất đặt xe…");
             }
-        } catch (e) {
-            write("Đang hoàn tất đặt xe…");
         }
+        finished = true;
+        while (buffer.length) { await this._sleep(30); } // let the typewriter finish
     }
 
     cancelBooking() {
@@ -389,6 +411,7 @@ class VoiceBookingApp {
         this.pending = null;
         this._vibrate(80);
         this._hideAgentOverlay();
+        this._resetDestBox();
         this.announce("Đã hủy.", "Chạm và giữ để đặt chuyến mới.", true);
     }
 
@@ -438,6 +461,7 @@ class VoiceBookingApp {
                     this._hideAgentOverlay();
                     this.state = "idle";
                     this.pending = null;
+                    this._resetDestBox();
                     this.announce("Chuyến đi đã đặt xong.", "Chạm và giữ để đặt chuyến mới.", true);
                 }
             });

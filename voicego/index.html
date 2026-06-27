@@ -19,8 +19,22 @@
         </div>
     </header>
 
-    <!-- Route preview map (for sighted helpers / demo). Non-interactive. -->
+    <!-- Route preview map (pan/zoom enabled) -->
     <div id="route-map" class="route-map" aria-hidden="true"></div>
+
+    <!-- Trip: pickup is fixed (no GPS); destination is filled once the AI resolves it -->
+    <div class="trip-card">
+        <div class="trip-row">
+            <span class="trip-dot red"></span>
+            <span class="trip-label">Điểm đi</span>
+            <span id="origin-box" class="trip-value">Trường Đại học Quốc tế</span>
+        </div>
+        <div class="trip-row">
+            <span class="trip-dot green"></span>
+            <span class="trip-label">Điểm đến</span>
+            <span id="dest-box" class="trip-value muted">Chưa có — hãy nói điểm đến</span>
+        </div>
+    </div>
 
     <!-- Status + gesture zone (double-tap = confirm, swipe = change/cancel) -->
     <section id="gesture-zone" class="gesture-zone" aria-label="Vùng xác nhận. Chạm hai lần để đồng ý, vuốt ngang để đổi xe, vuốt xuống để hủy.">

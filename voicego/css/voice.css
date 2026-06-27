@@ -103,14 +103,47 @@ body {
 .backend-dot.online { background: rgba(0,200,83,.15); color: var(--color-accent-green); }
 .backend-dot.offline { background: rgba(255,255,255,.06); color: var(--color-text-secondary); }
 
-/* Route preview map (for sighted helpers / demo viewers) */
+/* Route preview map (pan/zoom enabled) */
 .route-map {
-    flex: 0 0 26vh;
+    flex: 0 0 30vh;
     width: 100%;
     background: #1a1a1a;
     border-bottom: 1px solid var(--color-surface);
     touch-action: auto;
+    cursor: grab;
 }
+.route-map:active { cursor: grabbing; }
+
+/* Trip card: pickup (fixed) + destination (filled by the AI) */
+.trip-card {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 18px;
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-surface);
+}
+.trip-row { display: flex; align-items: center; gap: 10px; }
+.trip-dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+.trip-dot.red { background: var(--color-accent-red); }
+.trip-dot.green { background: var(--color-accent-green); }
+.trip-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    width: 64px;
+    flex: 0 0 auto;
+}
+.trip-value {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.trip-value.muted { color: var(--color-text-muted); font-weight: 400; font-style: italic; }
 
 /* Status + gesture zone (large hit target for confirm/cancel) */
 .gesture-zone {
