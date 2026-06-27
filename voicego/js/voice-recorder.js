@@ -19,7 +19,19 @@ class VoiceRecorder {
         this.recording = false;
     }
 
-    async start() {
+    /**
+     * opts.onAutoStop(): called once when speech is followed by ~silenceMs of
+     * silence (voice activity detection) — enables hands-free "speak then it
+     * stops by itself". opts.silenceMs (default 1300), opts.speechThreshold (RMS).
+     */
+    async start(opts = {}) {
+        this.onAutoStop = opts.onAutoStop || null;
+        this.silenceMs = opts.silenceMs || 1300;
+        this.speechThreshold = opts.speechThreshold || 0.018;
+        this._speechStarted = false;
+        this._silenceStart = null;
+        this._autoStopped = false;
+
         this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.source = this.audioContext.createMediaStreamSource(this.stream);
@@ -30,7 +42,25 @@ class VoiceRecorder {
 
         this.processor.onaudioprocess = (e) => {
             if (!this.recording) return;
-            this.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+            const data = e.inputBuffer.getChannelData(0);
+            this.chunks.push(new Float32Array(data));
+
+            if (this.onAutoStop && !this._autoStopped) {
+                let sum = 0;
+                for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+                const rms = Math.sqrt(sum / data.length);
+                const now = performance.now();
+                if (rms > this.speechThreshold) {
+                    this._speechStarted = true;
+                    this._silenceStart = null;
+                } else if (this._speechStarted) {
+                    if (this._silenceStart == null) this._silenceStart = now;
+                    else if (now - this._silenceStart > this.silenceMs) {
+                        this._autoStopped = true;
+                        try { this.onAutoStop(); } catch (err) {}
+                    }
+                }
+            }
         };
 
         this.source.connect(this.processor);

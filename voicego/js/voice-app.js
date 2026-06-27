@@ -116,55 +116,62 @@ class VoiceBookingApp {
         this.els.backendDot.className = "backend-dot " + (ok ? "online" : "offline");
     }
 
-    // ----- Live transcript (Web Speech API streams what the user is saying) ---
-    _startLiveTranscript() {
-        if (this.els.liveTranscript) this.els.liveTranscript.textContent = "";
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) return;
-        try {
-            this.sr = new SR();
-            this.sr.lang = "vi-VN";
-            this.sr.interimResults = true;
-            this.sr.continuous = true;
-            this.sr.onresult = (e) => {
-                let t = "";
-                for (const r of e.results) t += r[0].transcript;
-                if (this.els.liveTranscript) this.els.liveTranscript.textContent = t ? `“${t}…”` : "";
-            };
-            this.sr.onerror = () => {};
-            this.sr.start();
-        } catch (e) { this.sr = null; }
-    }
-    _stopLiveTranscript() {
-        if (this.sr) { try { this.sr.stop(); } catch (e) {} this.sr = null; }
-        if (this.els.liveTranscript) this.els.liveTranscript.textContent = "";
+    // ----- Speech recognition (auto-endpointing: stops on its own when you pause) ---
+    _setRecLabel(text) {
+        const el = this.els.recordBtn && this.els.recordBtn.querySelector(".record-label");
+        if (el) el.textContent = text;
     }
 
-    // ----- Recording (hold-to-talk) -----------------------------------------
     _clearRecUI() {
         this.recording = false;
         if (this.els.recordBtn) this.els.recordBtn.classList.remove("recording");
         this._setRecLabel("Chạm để nói");
-        this._stopLiveTranscript();
+        if (this.els.liveTranscript) this.els.liveTranscript.textContent = "";
     }
 
+    // Optional live caption (browser STT, visual only) while FPT records.
+    _startCaption() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) return;
+        try {
+            this._cap = new SR();
+            this._cap.lang = "vi-VN";
+            this._cap.interimResults = true;
+            this._cap.continuous = true;
+            this._cap.onresult = (e) => {
+                let t = "";
+                for (const r of e.results) t += r[0].transcript;
+                if (this.els.liveTranscript) this.els.liveTranscript.textContent = t ? `“${t}…”` : "";
+            };
+            this._cap.onerror = () => {};
+            this._cap.start();
+        } catch (e) { this._cap = null; }
+    }
+    _stopCaption() {
+        if (this._cap) { try { this._cap.stop(); } catch (e) {} this._cap = null; }
+        if (this.els.liveTranscript) this.els.liveTranscript.textContent = "";
+    }
+
+    /**
+     * Tap once -> speak -> it AUTO-STOPS when you go silent (VAD) and sends the
+     * audio to FPT for recognition. No manual stop needed (tap again ends early).
+     * FPT is used for BOTH recognition and the spoken replies.
+     */
     async startListening() {
         if (this.busy || this.recording || this._starting) return;
         if (!BACKEND_URL) {
             this.announce("Chế độ ngoại tuyến.", "Hãy gõ điểm đến ở ô bên dưới, hoặc chạy server agent.", true);
             return;
         }
-        // Instant feedback (mic startup is async — show we're listening right away)
         this._starting = true;
         this._wantStop = false;
         this._vibrate(40);
         if (this.els.recordBtn) this.els.recordBtn.classList.add("recording");
-        this._setRecLabel("⏹ Chạm để dừng");
-        this.announce("Đang nghe…", "Nói điểm đến, rồi chạm lần nữa để dừng.");
-        this._startLiveTranscript();
+        this._setRecLabel("🎙️ Đang nghe…");
+        this.announce("Đang nghe…", "Nói điểm đến của bạn — tôi tự nhận khi bạn nói xong.");
 
         try {
-            await this.recorder.start();
+            await this.recorder.start({ onAutoStop: () => this._finishRecording() });
         } catch (e) {
             this._starting = false;
             this._clearRecUI();
@@ -172,27 +179,26 @@ class VoiceBookingApp {
             return;
         }
         this._starting = false;
-
-        // If the user already tapped stop while the mic was starting up, discard.
-        if (this._wantStop) {
-            try { this.recorder.stop(); } catch (e) {}
-            this._clearRecUI();
-            this.announce("Chưa ghi được.", "Chạm để nói lại nhé.", false);
-            return;
-        }
+        if (this._wantStop) { this._finishRecording(); return; }
         this.recording = true;
+        this._startCaption();
+
+        // Safety cap: stop after 12s even if VAD never triggers.
+        this._maxTimer = setTimeout(() => this._finishRecording(), 12000);
     }
 
-    _setRecLabel(text) {
-        const el = this.els.recordBtn && this.els.recordBtn.querySelector(".record-label");
-        if (el) el.textContent = text;
-    }
-
-    async stopListening() {
-        // Released during mic startup -> tell startListening to discard.
+    /** Tap again to end early (otherwise VAD ends it automatically). */
+    stopListening() {
         if (this._starting) { this._wantStop = true; return; }
+        this._finishRecording();
+    }
+
+    async _finishRecording() {
         if (!this.recording) return;
+        this.recording = false;
+        if (this._maxTimer) { clearTimeout(this._maxTimer); this._maxTimer = null; }
         const wav = this.recorder.stop();
+        this._stopCaption();
         this._clearRecUI();
         this.announce("Đang nhận diện…", "");
         try {
@@ -203,7 +209,7 @@ class VoiceBookingApp {
             });
             const j = await res.json();
             const text = (j.text || "").trim();
-            if (!text) { this.announce("Chưa nghe rõ.", "Bạn giữ nút và nói lại giúp tôi.", true); return; }
+            if (!text) { this.announce("Chưa nghe rõ.", "Chạm để nói lại giúp tôi.", true); return; }
             this._send(text);
         } catch (e) {
             this.announce("Lỗi nhận diện giọng nói.", "Bạn thử lại hoặc gõ lệnh ở ô bên dưới.", true);
