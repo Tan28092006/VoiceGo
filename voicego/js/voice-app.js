@@ -237,7 +237,11 @@ class VoiceBookingApp {
             const ui = data.ui || {};
             const reply = data.reply || "";
 
+            // Phase 1: a place was resolved -> pin it (no route/price yet).
             if (ui.destination) this._applyDestination(ui.destination);
+            // Phase 2: a quote was made -> draw the real route (distance/price confirmed).
+            if (ui.quote) this._applyQuote(ui.quote);
+            // Phase 3: booked.
             if (ui.booked) { await this._showBooked(ui.booked, reply); }
             else { this.announce(reply || "…", "", true); }
         } catch (e) {
@@ -252,11 +256,17 @@ class VoiceBookingApp {
             this.els.destBox.classList.remove("muted");
         }
         if (this.routeMap && d.lat != null) {
-            this.routeMap.showTrip(
-                this.origin,
-                { lat: d.lat, lng: d.lng, name: d.name, address: d.address },
-                d.geometry
-            );
+            this.routeMap.showPins(this.origin, { lat: d.lat, lng: d.lng, name: d.name, address: d.address });
+        }
+    }
+
+    _applyQuote(q) {
+        if (this.els.destBox && (q.address || q.name)) {
+            this.els.destBox.textContent = q.address || q.name;
+            this.els.destBox.classList.remove("muted");
+        }
+        if (this.routeMap && q.lat != null) {
+            this.routeMap.showTrip(this.origin, { lat: q.lat, lng: q.lng, name: q.name, address: q.address }, q.geometry);
         }
     }
 

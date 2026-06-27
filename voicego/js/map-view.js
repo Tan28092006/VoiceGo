@@ -21,6 +21,29 @@ class RouteMap {
 
     clear() { this.layer.clearLayers(); }
 
+    _coordStr(p) { return `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`; }
+
+    _addMarkers(origin, dest) {
+        const om = L.marker([origin.lat, origin.lng], { icon: this._pin("🧍", "#ef5350") })
+            .bindPopup(`<b>🔴 Điểm đón</b><br>${origin.name || ""}<br><small>${this._coordStr(origin)}</small>`);
+        const dm = L.marker([dest.lat, dest.lng], { icon: this._pin("📍", "#00c853") })
+            .bindPopup(`<b>🟢 Điểm đến</b><br>${dest.name || ""}`
+                + `${dest.address ? "<br>" + dest.address : ""}<br><small>${this._coordStr(dest)}</small>`);
+        this.layer.addLayer(om);
+        this.layer.addLayer(dm);
+        dm.openPopup();
+        return dm;
+    }
+
+    /** Pins only (no route line) — used while the destination is being confirmed. */
+    showPins(origin, dest) {
+        this.clear();
+        this._addMarkers(origin, dest);
+        const b = L.latLngBounds([[origin.lat, origin.lng], [dest.lat, dest.lng]]);
+        this.map.fitBounds(b, { padding: [50, 50], maxZoom: 16 });
+        setTimeout(() => this.map.invalidateSize(), 200);
+    }
+
     _pin(emoji, color) {
         return L.divIcon({
             html: `<div style="background:${color};border:2px solid #fff;border-radius:50% 50% 50% 0;`
@@ -43,17 +66,7 @@ class RouteMap {
             : L.polyline([[origin.lat, origin.lng], [dest.lat, dest.lng]],
                 { color: "#00c853", weight: 4, opacity: 0.7, dashArray: "6 8", lineCap: "round" });
         this.layer.addLayer(line);
-
-        const coord = (p) => `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
-        const om = L.marker([origin.lat, origin.lng], { icon: this._pin("🧍", "#ef5350") })
-            .bindPopup(`<b>🔴 Điểm đón</b><br>${origin.name || ""}<br><small>${coord(origin)}</small>`);
-        const dm = L.marker([dest.lat, dest.lng], { icon: this._pin("📍", "#00c853") })
-            .bindPopup(`<b>🟢 Điểm đến</b><br>${dest.name || ""}`
-                + `${dest.address ? "<br>" + dest.address : ""}<br><small>${coord(dest)}</small>`);
-        this.layer.addLayer(om);
-        this.layer.addLayer(dm);
-        dm.openPopup();
-
+        this._addMarkers(origin, dest);
         this.map.fitBounds(line.getBounds(), { padding: [50, 50], maxZoom: 16 });
         setTimeout(() => this.map.invalidateSize(), 200);
     }
