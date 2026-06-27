@@ -79,6 +79,49 @@ def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes |
     return None
 
 
+def stream_agent_narration(booking: dict):
+    """
+    Generator yielding a short Vietnamese 'AI agent đang đặt xe' narration
+    token-by-token via Gemini streaming. Falls back to scripted text if Gemini
+    is unavailable, so the agent overlay always shows something.
+    """
+    place = booking.get("place", "điểm đến")
+    address = booking.get("address") or ""
+    vehicle = "ô tô điện" if booking.get("vehicle") == "car" else "xe ôm điện"
+    km = booking.get("km", 0) or 0
+    price = booking.get("price", 0) or 0
+
+    if not GEMINI_API_KEY:
+        for s in [f"Đã xác nhận: đi {place} bằng {vehicle}. ",
+                  "Đang tìm tài xế phù hợp gần bạn… ",
+                  "Đã khớp tài xế, đang gửi thông tin chuyến đi."]:
+            yield s
+        return
+
+    try:
+        from google import genai
+    except ImportError:
+        yield f"Đang đặt {vehicle} đi {place}…"
+        return
+
+    prompt = (
+        "Bạn là trợ lý AI đang THỰC THI việc đặt xe cho người khiếm thị. "
+        "Tường thuật NGẮN GỌN, ấm áp các bước đang làm, bằng tiếng Việt, như một agent "
+        "đang hành động (2-3 câu, mỗi câu một hành động). "
+        f"Thông tin: điểm đến={place} ({address}); loại xe={vehicle}; "
+        f"quãng đường≈{km:.1f} km; giá≈{int(price)} đồng. "
+        "Phong cách: 'Đang khóa điểm đến...', 'Đang tìm tài xế gần bạn...', "
+        "'Đã tìm thấy tài xế, đang xác nhận chuyến đi...'. Không bịa số liệu khác."
+    )
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        for chunk in client.models.generate_content_stream(model=GEMINI_MODEL, contents=prompt):
+            if chunk.text:
+                yield chunk.text
+    except Exception:  # noqa: BLE001
+        yield f"Đang hoàn tất đặt {vehicle} đi {place}…"
+
+
 def extract_intent(text: str, known_places: list[dict]) -> dict | None:
     """
     Use Gemini to parse a (possibly messy / misheard) Vietnamese booking command

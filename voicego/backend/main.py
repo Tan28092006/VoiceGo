@@ -7,11 +7,11 @@ pricing run in the browser.
 """
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from data import NODES
-from voice import speech_to_text, text_to_speech, extract_intent
+from voice import speech_to_text, text_to_speech, extract_intent, stream_agent_narration
 from geocode import resolve_destination
 
 app = FastAPI(title="VoiceGo API", version="1.0.0")
@@ -38,6 +38,14 @@ class GeocodeRequest(BaseModel):
     text: str
     lat: float | None = None
     lng: float | None = None
+
+
+class AgentRequest(BaseModel):
+    place: str
+    address: str = ""
+    vehicle: str = "bike"
+    km: float = 0
+    price: int = 0
 
 
 @app.get("/api/health")
@@ -77,3 +85,12 @@ def voice_geocode(req: GeocodeRequest):
     """Resolve an arbitrary spoken place name to a real address + coordinates
     (Gemini grounded search -> Nominatim -> cross-validate)."""
     return resolve_destination(req.text, req.lat, req.lng)
+
+
+@app.post("/api/agent/stream")
+def agent_stream(req: AgentRequest):
+    """Stream the AI agent's booking narration token-by-token (Gemini streaming)."""
+    return StreamingResponse(
+        stream_agent_narration(req.model_dump()),
+        media_type="text/plain; charset=utf-8",
+    )

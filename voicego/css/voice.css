@@ -1,5 +1,71 @@
 /* voice.css — high-contrast, large-target accessible booking UI (WCAG 2.2) */
 
+/* Live transcript of the user's speech (streamed via Web Speech API) */
+.live-transcript {
+    min-height: 1.4em;
+    font-size: clamp(1rem, 3.4vw, 1.3rem);
+    color: var(--color-accent-blue);
+    font-style: italic;
+    opacity: 0.95;
+}
+
+/* AI Agent overlay (the "LLM is acting" moment for judges) */
+.agent-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 8, 12, 0.97);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.agent-overlay.hidden { display: none; }
+.agent-box {
+    width: min(680px, 94vw);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    align-items: center;
+    text-align: center;
+}
+.agent-spinner {
+    width: 54px; height: 54px;
+    border: 4px solid rgba(66,165,245,0.25);
+    border-top-color: var(--color-accent-blue);
+    border-radius: 50%;
+    animation: agent-spin 0.9s linear infinite;
+}
+@keyframes agent-spin { to { transform: rotate(360deg); } }
+.agent-title {
+    font-size: clamp(1.2rem, 4vw, 1.7rem);
+    font-weight: 700;
+    color: var(--color-accent-green);
+}
+.agent-log {
+    width: 100%;
+    min-height: 120px;
+    max-height: 38vh;
+    overflow-y: auto;
+    background: #0c0f16;
+    border: 1px solid var(--color-surface);
+    border-radius: 12px;
+    padding: 16px 18px;
+    font-family: var(--font-mono);
+    font-size: clamp(0.95rem, 3vw, 1.15rem);
+    line-height: 1.6;
+    color: #b6f5c8;
+    text-align: left;
+    white-space: pre-wrap;
+}
+.agent-log::after { content: "▋"; color: var(--color-accent-green); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.agent-result {
+    font-size: clamp(1.1rem, 3.6vw, 1.5rem);
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
 html, body {
     height: 100%;
     margin: 0;

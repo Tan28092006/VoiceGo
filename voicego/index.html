@@ -28,6 +28,8 @@
             <div id="status" class="status-main">Đang khởi động…</div>
             <div id="substatus" class="status-sub"></div>
         </div>
+        <!-- Live speech-to-text: visual stream of what the user is saying -->
+        <div id="live-transcript" class="live-transcript" aria-hidden="true"></div>
         <div class="confirm-hint">
             <span id="vehicle-pill" class="vehicle-pill">xe ôm điện</span>
             <span class="hint-text">Chạm 2 lần = Đồng ý · Vuốt ngang = Đổi xe · Vuốt xuống = Hủy</span>
@@ -44,6 +46,17 @@
     <div class="text-fallback-bar">
         <input id="text-fallback" type="text" placeholder="Hoặc gõ: cho tôi đi Bến Thành" aria-label="Gõ lệnh đặt xe">
         <button id="text-send" aria-label="Gửi lệnh">Gửi</button>
+    </div>
+
+    <!-- AI Agent overlay: shown on confirm. Streams the agent's actions (token by
+         token) so judges see the LLM acting as an autonomous agent. -->
+    <div id="agent-overlay" class="agent-overlay hidden" role="dialog" aria-modal="true">
+        <div class="agent-box">
+            <div class="agent-spinner" aria-hidden="true"></div>
+            <div class="agent-title">🤖 AI Agent đang đặt xe…</div>
+            <div id="agent-log" class="agent-log" aria-hidden="true"></div>
+            <div id="agent-result" class="agent-result" role="status" aria-live="assertive"></div>
+        </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

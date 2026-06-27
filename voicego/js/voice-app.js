@@ -9,7 +9,18 @@
  * a command; routing/pricing run locally and the browser's own TTS reads back.
  */
 
-const BACKEND_URL = "http://localhost:8000";
+// Backend (FPT/Gemini proxy). Configurable so the static GitHub Pages build can
+// point at a backend running locally (?backend=http://localhost:8000) or a hosted
+// one. When empty (e.g. deployed with no backend), the app degrades gracefully to
+// typed input + on-device matching + the browser's own speech engine.
+const BACKEND_URL = (() => {
+    const q = new URLSearchParams(location.search).get("backend");
+    if (q) return q.replace(/\/$/, "");
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        return "http://localhost:8000";
+    }
+    return "";
+})();
 
 class VoiceBookingApp {
     constructor() {
@@ -30,6 +41,10 @@ class VoiceBookingApp {
             backendDot: document.getElementById("backend-dot"),
             textInput: document.getElementById("text-fallback"),
             textSend: document.getElementById("text-send"),
+            liveTranscript: document.getElementById("live-transcript"),
+            agentOverlay: document.getElementById("agent-overlay"),
+            agentLog: document.getElementById("agent-log"),
+            agentResult: document.getElementById("agent-result"),
         };
 
         this._bindGestures();
@@ -51,6 +66,7 @@ class VoiceBookingApp {
 
     async speak(text) {
         // Prefer FPT TTS via backend; fall back to the browser's speech engine.
+        if (!BACKEND_URL) { this._browserSpeak(text); return; }
         try {
             const res = await fetch(`${BACKEND_URL}/api/voice/tts`, {
                 method: "POST",
@@ -82,6 +98,7 @@ class VoiceBookingApp {
 
     // ----- Backend + GPS -----------------------------------------------------
     async _checkBackend() {
+        if (!BACKEND_URL) { this._setBackend(false); return; }
         try {
             const r = await fetch(`${BACKEND_URL}/api/health`, { signal: AbortSignal.timeout(2000) });
             this._setBackend(r.ok);
@@ -112,9 +129,40 @@ class VoiceBookingApp {
         );
     }
 
+    // ----- Live transcript (Web Speech API streams what the user is saying) ---
+    _startLiveTranscript() {
+        if (this.els.liveTranscript) this.els.liveTranscript.textContent = "";
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) return; // not supported -> graceful (FPT still gives final text)
+        try {
+            this.sr = new SR();
+            this.sr.lang = "vi-VN";
+            this.sr.interimResults = true;
+            this.sr.continuous = true;
+            this.sr.onresult = (e) => {
+                let t = "";
+                for (const r of e.results) t += r[0].transcript;
+                if (this.els.liveTranscript) this.els.liveTranscript.textContent = t ? `“${t}…”` : "";
+            };
+            this.sr.onerror = () => {};
+            this.sr.start();
+        } catch (e) { this.sr = null; }
+    }
+
+    _stopLiveTranscript() {
+        if (this.sr) { try { this.sr.stop(); } catch (e) {} this.sr = null; }
+        if (this.els.liveTranscript) this.els.liveTranscript.textContent = "";
+    }
+
+    _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
     // ----- Recording (hold-to-talk) -----------------------------------------
     async startListening() {
         if (this.state === "listening" || this.state === "processing") return;
+        if (!BACKEND_URL) {
+            this.announce("Chế độ này chưa bật nhận giọng nói.", "Bạn gõ điểm đến ở ô bên dưới giúp tôi nhé.", true);
+            return;
+        }
         try {
             await this.recorder.start();
         } catch (e) {
@@ -125,11 +173,13 @@ class VoiceBookingApp {
         this._vibrate(40);
         if (this.els.recordBtn) this.els.recordBtn.classList.add("recording");
         this.announce("Đang nghe…", "Nói điểm đến của bạn, ví dụ: cho tôi đi Bến Thành.");
+        this._startLiveTranscript();
     }
 
     async stopListening() {
         if (this.state !== "listening") return;
         const wav = this.recorder.stop();
+        this._stopLiveTranscript();
         if (this.els.recordBtn) this.els.recordBtn.classList.remove("recording");
         this.state = "processing";
         this._vibrate(20);
@@ -161,6 +211,7 @@ class VoiceBookingApp {
      * backend or Gemini is unavailable — so it still works fully offline.
      */
     async _understand(transcript) {
+        if (!BACKEND_URL) return understandCommand(transcript); // on-device only
         try {
             const res = await fetch(`${BACKEND_URL}/api/voice/nlu`, {
                 method: "POST",
@@ -228,6 +279,7 @@ class VoiceBookingApp {
 
     /** Resolve an arbitrary place name to a real address + coords (backend). */
     async _geocode(transcript) {
+        if (!BACKEND_URL) return null; // no backend (e.g. static deploy) -> skip geocoding
         try {
             const res = await fetch(`${BACKEND_URL}/api/voice/geocode`, {
                 method: "POST",
@@ -268,25 +320,67 @@ class VoiceBookingApp {
         this._announceQuote(true);
     }
 
-    confirmBooking() {
+    async confirmBooking() {
         if (this.state !== "confirming" || !this.pending) return;
         this.state = "booked";
         this._vibrate([40, 60, 40]);
         const p = this.pending;
-        this.announce(
-            `Đã đặt ${VEHICLE_LABEL[p.vehicle]} đi ${p.place.name}.`,
-            "Đang tìm tài xế gần bạn. Vui lòng chờ trong giây lát.",
-            true
-        );
-        // Mock driver assignment
-        setTimeout(() => {
-            if (this.state !== "booked") return;
-            this.announce(
-                "Đã tìm thấy tài xế!",
-                `Tài xế Nguyễn Văn A, biển số 59-X1 234.56, đang đến điểm đón ${this.originNode.name} trong 4 phút.`,
-                true
-            );
-        }, 3500);
+
+        // Show the dark "AI agent" overlay and stream its actions (for judges).
+        this._showAgentOverlay();
+        await this._streamAgent(p);
+
+        // Mock driver assignment as the agent's final result.
+        const driver = `Đã tìm thấy tài xế! Nguyễn Văn A · biển số 59-X1 234.56 · ` +
+                       `đến điểm đón ${this.originNode.name} trong 4 phút.`;
+        if (this.els.agentResult) this.els.agentResult.textContent = driver;
+        const spinner = this.els.agentOverlay && this.els.agentOverlay.querySelector(".agent-spinner");
+        if (spinner) spinner.style.display = "none";
+        this.speak("Đã tìm thấy tài xế, đang đến đón bạn. " + driver);
+    }
+
+    _showAgentOverlay() {
+        if (!this.els.agentOverlay) return;
+        if (this.els.agentLog) this.els.agentLog.textContent = "";
+        if (this.els.agentResult) this.els.agentResult.textContent = "";
+        const spinner = this.els.agentOverlay.querySelector(".agent-spinner");
+        if (spinner) spinner.style.display = "";
+        this.els.agentOverlay.classList.remove("hidden");
+    }
+
+    _hideAgentOverlay() {
+        if (this.els.agentOverlay) this.els.agentOverlay.classList.add("hidden");
+    }
+
+    /** Stream the agent's booking narration token-by-token into the overlay. */
+    async _streamAgent(p) {
+        const log = this.els.agentLog;
+        const write = (t) => { if (log) { log.textContent += t; log.scrollTop = log.scrollHeight; } };
+
+        if (!BACKEND_URL) {
+            const steps = ["Đang khóa điểm đến…\n", "Đang tìm tài xế gần bạn…\n", "Đã tìm thấy tài xế phù hợp.\n"];
+            for (const s of steps) { await this._sleep(800); write(s); }
+            return;
+        }
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/agent/stream`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    place: p.place.name, address: p.place.address || "",
+                    vehicle: p.vehicle, km: p.km, price: p.price || 0,
+                }),
+            });
+            const reader = res.body.getReader();
+            const dec = new TextDecoder();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                write(dec.decode(value, { stream: true }));
+            }
+        } catch (e) {
+            write("Đang hoàn tất đặt xe…");
+        }
     }
 
     cancelBooking() {
@@ -294,6 +388,7 @@ class VoiceBookingApp {
         this.state = "idle";
         this.pending = null;
         this._vibrate(80);
+        this._hideAgentOverlay();
         this.announce("Đã hủy.", "Chạm và giữ để đặt chuyến mới.", true);
     }
 
@@ -336,7 +431,19 @@ class VoiceBookingApp {
             this.els.textInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
         }
 
-        // Keyboard shortcuts for accessibility testing (Space=confirm, Esc=cancel)
+        // Tap the agent overlay (after the result shows) to close + start over.
+        if (this.els.agentOverlay) {
+            this.els.agentOverlay.addEventListener("click", () => {
+                if (this.state === "booked" && this.els.agentResult && this.els.agentResult.textContent) {
+                    this._hideAgentOverlay();
+                    this.state = "idle";
+                    this.pending = null;
+                    this.announce("Chuyến đi đã đặt xong.", "Chạm và giữ để đặt chuyến mới.", true);
+                }
+            });
+        }
+
+        // Keyboard shortcuts for accessibility testing (Enter=confirm, Esc=cancel)
         document.addEventListener("keydown", (e) => {
             if (e.key === "Enter" && this.state === "confirming") { e.preventDefault(); this.confirmBooking(); }
             if (e.key === "Escape") this.cancelBooking();
