@@ -67,6 +67,35 @@
     white-space: pre-line;
 }
 
+/* Live trip overlay: driver card + giant PIN (read aloud on arrival) */
+.trip-driver {
+    font-size: clamp(1.05rem, 3.4vw, 1.35rem);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    text-align: center;
+    line-height: 1.5;
+}
+.trip-driver:empty { display: none; }
+.pin-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+.pin-row:empty { display: none; }
+.pin-digit {
+    width: clamp(56px, 16vw, 84px);
+    height: clamp(72px, 20vw, 104px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-accent-amber);
+    color: #000;
+    border-radius: 18px;
+    font-size: clamp(2.4rem, 9vw, 3.6rem);
+    font-weight: 900;
+    box-shadow: var(--shadow-lg);
+}
+
 html, body {
     height: 100%;
     margin: 0;

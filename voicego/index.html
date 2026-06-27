@@ -66,7 +66,21 @@
         </div>
     </div>
 
+    <!-- Live trip overlay (realtime via teammate's Socket.IO driver app):
+         tìm tài xế -> tài xế đến + mã PIN (đọc tự động) -> xác minh an toàn. -->
+    <div id="trip-overlay" class="agent-overlay hidden" role="dialog" aria-modal="true">
+        <div class="agent-box">
+            <div id="trip-spinner" class="agent-spinner" aria-hidden="true"></div>
+            <div id="trip-title" class="agent-title">🔎 Đang tìm tài xế…</div>
+            <div id="trip-driver" class="trip-driver" role="status" aria-live="polite"></div>
+            <div id="trip-pin" class="pin-row" role="status" aria-live="polite"></div>
+            <div id="trip-sub" class="agent-result" role="status" aria-live="assertive"></div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Socket.IO client (4.8.x) to talk to the driver app's realtime server -->
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
     <script src="js/seed-data.js"></script>
     <script src="js/graph.js"></script>
     <script src="js/local-engine.js"></script>

@@ -24,6 +24,29 @@ const BACKEND_URL = (() => {
 // Pickup is fixed (the demo has no live GPS): International University, Thủ Đức.
 const ORIGIN = { name: "Trường Đại học Quốc tế", lat: 10.8782, lng: 106.8012 };
 
+// Realtime driver matching (teammate's Node + Socket.IO app, default port 3001).
+// When reachable, booking hands off to the REAL driver: emit `passenger-waiting`,
+// then on `driver-arrived` we announce the driver + read the PIN aloud, and on
+// `pin-verified` we confirm "an toàn". Override/disable with ?realtime=URL|off.
+const REALTIME_URL = (() => {
+    const q = new URLSearchParams(location.search).get("realtime");
+    if (q === "off") return "";
+    if (q) return q.replace(/\/$/, "");
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        return "http://localhost:3001";
+    }
+    return "";  // GitHub Pages / no driver server -> use standalone booking fallback
+})();
+// Demo passenger account (exists in the driver app's user DB) used to obtain a
+// valid userId for matching. Override with ?pemail= / ?ppass= if needed.
+const REALTIME_PASSENGER = (() => {
+    const p = new URLSearchParams(location.search);
+    return {
+        email: p.get("pemail") || "passenger1@grab.com",
+        password: p.get("ppass") || "password123",
+    };
+})();
+
 class VoiceBookingApp {
     constructor() {
         this.recorder = new VoiceRecorder();
@@ -37,6 +60,10 @@ class VoiceBookingApp {
         this.audio = new Audio();
         this._streamTimer = null;
         this.sr = null;
+        this.socket = null;          // Socket.IO connection to the driver app (realtime)
+        this._pin = null;            // PIN for the active trip (read aloud on arrival)
+        this._lastQuote = null;      // last quote (price/dest/eta) to read on arrival
+        this._tripActive = false;
         this.routeMap = (typeof RouteMap !== "undefined" && document.getElementById("route-map"))
             ? new RouteMap("route-map") : null;
 
@@ -52,6 +79,12 @@ class VoiceBookingApp {
             agentResult: document.getElementById("agent-result"),
             destBox: document.getElementById("dest-box"),
             originBox: document.getElementById("origin-box"),
+            tripOverlay: document.getElementById("trip-overlay"),
+            tripSpinner: document.getElementById("trip-spinner"),
+            tripTitle: document.getElementById("trip-title"),
+            tripDriver: document.getElementById("trip-driver"),
+            tripPin: document.getElementById("trip-pin"),
+            tripSub: document.getElementById("trip-sub"),
         };
 
         this._bindGestures();
@@ -334,9 +367,15 @@ class VoiceBookingApp {
             if (ui.quote) this._applyQuote(ui.quote);
 
             if (ui.booked) {
-                await this._showBooked(ui.booked, reply);
                 this.busy = false;
-                this._resetTrip();
+                if (REALTIME_URL) {
+                    // Hand off to the REAL driver app: search -> driver arrives -> PIN.
+                    this.messages = [];               // fresh booking convo; trip runs via socket
+                    await this._startRealtime(ui.booked, reply);
+                } else {
+                    await this._showBooked(ui.booked, reply);  // standalone fallback (no driver app)
+                    this._resetTrip();
+                }
                 return; // conversation done — no auto-listen
             }
             // User cancelled / ended -> say goodbye then STOP (no auto-listen).
@@ -377,6 +416,7 @@ class VoiceBookingApp {
     }
 
     _applyQuote(q) {
+        this._lastQuote = q;   // keep price/dest/eta to read out when the driver arrives
         if (this.els.destBox && (q.address || q.name)) {
             this.els.destBox.textContent = q.address || q.name;
             this.els.destBox.classList.remove("muted");
@@ -402,6 +442,155 @@ class VoiceBookingApp {
         // Speak the agent's concise Vietnamese confirmation (FPT, same voice as the
         // whole flow). Driver details are shown visually.
         await this.speak(reply || driver);
+    }
+
+    // ----- Realtime trip (driver app via Socket.IO) -------------------------
+    /**
+     * After the user confirms, hand the booking to the REAL driver app:
+     *  1) "Đang tìm tài xế…" (spoken)        — passenger-waiting emitted
+     *  2) on `driver-arrived`: announce driver + read the PIN ALOUD automatically
+     *  3) on `pin-verified`: "Bạn đã lên xe an toàn."
+     * Degrades to the standalone booking confirmation if the driver app is down.
+     */
+    async _startRealtime(booked, reply) {
+        if (typeof io === "undefined") { await this._showBooked(booked, reply); this._resetTrip(); return; }
+        this._booked = booked;
+        this._rtFallbackDone = false;
+
+        // Try to reach the driver app first; if it's down, just do the standalone
+        // confirmation (no confusing "đang tìm tài xế" that goes nowhere).
+        const uid = await this._loginPassenger();
+        if (!uid) { await this._showBooked(booked, reply); this._resetTrip(); return; }
+
+        this._tripActive = true;
+        this._pin = null;
+        this._showTripOverlay();
+        this._tripSet("🔎 Đang tìm tài xế…", "", "Đã gửi yêu cầu của bạn.");
+        this.announce("Đang tìm tài xế…", "Đã đặt xe, đang chờ tài xế nhận chuyến.", false);
+        await this.speak("Đã đặt xe thành công. Đang tìm tài xế cho bạn, vui lòng chờ trong giây lát.");
+
+        try {
+            this.socket = io(REALTIME_URL, { transports: ["websocket", "polling"], timeout: 4000, reconnection: false });
+        } catch (e) {
+            this._realtimeFallback(booked, reply, "Không kết nối được dịch vụ tài xế."); return;
+        }
+
+        // If the socket never connects, fall back to the standalone confirmation.
+        const failTimer = setTimeout(() => this._realtimeFallback(booked, reply, "Dịch vụ tài xế không phản hồi."), 6000);
+
+        this.socket.on("connect", () => {
+            clearTimeout(failTimer);
+            this.socket.emit("passenger-waiting", { userId: uid });
+            this._tripSet("🔎 Đang tìm tài xế…", "", "Đang chờ tài xế nhận chuyến…");
+        });
+        this.socket.on("connect_error", () => this._realtimeFallback(booked, reply, "Không kết nối được dịch vụ tài xế."));
+        this.socket.on("driver-arrived", (data) => this._onDriverArrived(data || {}));
+        this.socket.on("pin-verified", () => this._onPinVerified());
+    }
+
+    async _loginPassenger() {
+        try {
+            const res = await fetch(`${REALTIME_URL}/api/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(REALTIME_PASSENGER),
+                signal: AbortSignal.timeout(4000),
+            });
+            const j = await res.json();
+            if (j && j.success && j.data && j.data.id) return j.data.id;
+        } catch (e) {}
+        return null;
+    }
+
+    /** Driver pressed "Tôi đã đến nơi": announce driver + read PIN aloud (no tap). */
+    async _onDriverArrived(data) {
+        if (!this._tripActive) return;
+        this._pin = (data.pin != null ? String(data.pin) : "").trim();
+        const name = data.driverName || "của bạn";
+        const plate = data.licensePlate || "—";
+        if (this.els.tripSpinner) this.els.tripSpinner.style.display = "none";
+        this._tripSet("🚗 Tài xế đã đến!", `Tài xế ${name} · Biển số ${plate}`, "Đọc mã PIN dưới đây cho tài xế để xác minh.");
+        this._renderPin(this._pin);
+        this._vibrate([200, 100, 200]);
+
+        // 1) arrival + driver + trip summary, then 2) the PIN on its own (clear & slow).
+        await this.speak(`Tài xế đã đến nơi đón. Tài xế ${name}, biển số ${this._spell(plate)}. ${this._tripSummary()}`);
+        if (this._pin) {
+            await this.speak(`Mã PIN của bạn là ${this._pin.split("").join(" ")}. Vui lòng đọc mã này cho tài xế để xác nhận.`);
+        }
+    }
+
+    /** Driver entered the correct PIN -> passenger is safely on board. */
+    async _onPinVerified() {
+        if (!this._tripActive) return;
+        this._tripActive = false;
+        if (this.els.tripSpinner) this.els.tripSpinner.style.display = "none";
+        this._tripSet("✅ Lên xe an toàn", "", "Đã xác minh mã PIN. Chúc bạn đi đường bình an!");
+        this._vibrate([200, 100, 200, 100, 200]);
+        await this.speak("Tài xế đã xác nhận đúng mã PIN. Bạn đã lên xe an toàn. Chúc bạn có chuyến đi bình an!");
+        this._cleanupSocket();
+        await this._sleep(2500);
+        this._hideTripOverlay();
+        this._resetTrip();
+        this.announce("Chuyến đi đã hoàn tất.", "Chạm nút để đặt chuyến mới.", false);
+    }
+
+    _realtimeFallback(booked, reply, why) {
+        if (this._rtFallbackDone) return;
+        this._rtFallbackDone = true;
+        this._cleanupSocket();
+        this._hideTripOverlay();
+        // No live driver -> show the standalone booking confirmation instead.
+        this._showBooked(booked, reply).then(() => this._resetTrip());
+    }
+
+    _cleanupSocket() {
+        if (this.socket) { try { this.socket.off(); this.socket.disconnect(); } catch (e) {} this.socket = null; }
+    }
+
+    _tripSummary() {
+        const q = this._lastQuote || {};
+        const b = this._booked || {};
+        const dest = q.address || q.name || b.address || b.destination || "điểm đến";
+        const priceK = Math.round(((q.priceVnd || b.priceVnd) || 0) / 1000);
+        const km = q.distanceKm != null ? `, khoảng ${q.distanceKm} ki lô mét` : "";
+        const dur = q.durationMin != null ? `, đi trong khoảng ${q.durationMin} phút` : "";
+        return `Chuyến đến ${dest}${km}${dur}${priceK ? `, giá ${priceK} nghìn đồng` : ""}.`;
+    }
+
+    /** Spell out a plate/code char-by-char so TTS reads it clearly. */
+    _spell(s) {
+        return String(s || "").replace(/[^0-9A-Za-zĐđ]/g, "").split("").join(" ");
+    }
+
+    _renderPin(pin) {
+        if (!this.els.tripPin) return;
+        this.els.tripPin.innerHTML = "";
+        if (!pin) return;
+        for (const d of pin.split("")) {
+            const span = document.createElement("span");
+            span.className = "pin-digit";
+            span.textContent = d;
+            this.els.tripPin.appendChild(span);
+        }
+        this.els.tripPin.setAttribute("aria-label", `Mã PIN là ${pin.split("").join(" ")}`);
+    }
+
+    _tripSet(title, driver, sub) {
+        if (this.els.tripTitle) this.els.tripTitle.textContent = title;
+        if (this.els.tripDriver) this.els.tripDriver.textContent = driver || "";
+        if (this.els.tripSub) this.els.tripSub.textContent = sub || "";
+    }
+
+    _showTripOverlay() {
+        if (!this.els.tripOverlay) return;
+        if (this.els.tripSpinner) this.els.tripSpinner.style.display = "";
+        if (this.els.tripPin) this.els.tripPin.innerHTML = "";
+        if (this.els.tripDriver) this.els.tripDriver.textContent = "";
+        this.els.tripOverlay.classList.remove("hidden");
+    }
+    _hideTripOverlay() {
+        if (this.els.tripOverlay) this.els.tripOverlay.classList.add("hidden");
     }
 
     /** Smooth typewriter (continuous like ChatGPT) into a visual element. */
@@ -482,6 +671,18 @@ class VoiceBookingApp {
                     this._resetTrip();
                     this.announce("Chuyến đi đã đặt xong.", "Chạm nút để đặt chuyến mới.", true);
                 }
+            });
+        }
+
+        // Trip overlay: tap to dismiss only once the trip has finished/failed
+        // (don't let a stray tap kill an in-progress search).
+        if (this.els.tripOverlay) {
+            this.els.tripOverlay.addEventListener("click", () => {
+                if (this._tripActive) return;
+                this._cleanupSocket();
+                this._hideTripOverlay();
+                this._resetTrip();
+                this.announce("Sẵn sàng đặt chuyến mới.", "Chạm nút để bắt đầu.", false);
             });
         }
     }
