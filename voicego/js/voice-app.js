@@ -144,6 +144,7 @@ class VoiceBookingApp {
     _clearRecUI() {
         this.recording = false;
         if (this.els.recordBtn) this.els.recordBtn.classList.remove("recording");
+        this._setRecLabel("Chạm để nói");
         this._stopLiveTranscript();
     }
 
@@ -158,7 +159,8 @@ class VoiceBookingApp {
         this._wantStop = false;
         this._vibrate(40);
         if (this.els.recordBtn) this.els.recordBtn.classList.add("recording");
-        this.announce("Đang nghe…", "Giữ nút và nói điểm đến, thả tay khi nói xong.");
+        this._setRecLabel("⏹ Chạm để dừng");
+        this.announce("Đang nghe…", "Nói điểm đến, rồi chạm lần nữa để dừng.");
         this._startLiveTranscript();
 
         try {
@@ -171,24 +173,27 @@ class VoiceBookingApp {
         }
         this._starting = false;
 
-        // If the user already released while the mic was starting up, discard.
+        // If the user already tapped stop while the mic was starting up, discard.
         if (this._wantStop) {
             try { this.recorder.stop(); } catch (e) {}
             this._clearRecUI();
-            this.announce("Hãy giữ nút lâu hơn một chút rồi nói nhé.", "");
+            this.announce("Chưa ghi được.", "Chạm để nói lại nhé.", false);
             return;
         }
         this.recording = true;
+    }
+
+    _setRecLabel(text) {
+        const el = this.els.recordBtn && this.els.recordBtn.querySelector(".record-label");
+        if (el) el.textContent = text;
     }
 
     async stopListening() {
         // Released during mic startup -> tell startListening to discard.
         if (this._starting) { this._wantStop = true; return; }
         if (!this.recording) return;
-        this.recording = false;
         const wav = this.recorder.stop();
-        if (this.els.recordBtn) this.els.recordBtn.classList.remove("recording");
-        this._stopLiveTranscript();
+        this._clearRecUI();
         this.announce("Đang nhận diện…", "");
         try {
             const fd = new FormData();
@@ -240,7 +245,13 @@ class VoiceBookingApp {
             this.els.destBox.textContent = d.address || d.name;
             this.els.destBox.classList.remove("muted");
         }
-        if (this.routeMap && d.lat != null) this.routeMap.showTrip(this.origin, { lat: d.lat, lng: d.lng });
+        if (this.routeMap && d.lat != null) {
+            this.routeMap.showTrip(
+                this.origin,
+                { lat: d.lat, lng: d.lng, name: d.name, address: d.address },
+                d.geometry
+            );
+        }
     }
 
     async _showBooked(booked, reply) {
@@ -317,15 +328,13 @@ class VoiceBookingApp {
     _bindGestures() {
         const btn = this.els.recordBtn;
         if (btn) {
-            btn.addEventListener("pointerdown", (e) => {
+            // Tap to start, tap again to stop (toggle) — easier than press-and-hold,
+            // and works with keyboard/screen-reader activation (Enter/Space).
+            btn.addEventListener("click", (e) => {
                 e.preventDefault();
-                try { btn.setPointerCapture(e.pointerId); } catch (_) {}
-                this.startListening();
+                if (this.recording || this._starting) this.stopListening();
+                else this.startListening();
             });
-            // Pointer capture keeps events on the button even if the finger drifts,
-            // so only release/cancel ends recording (no accidental early stop).
-            btn.addEventListener("pointerup", (e) => { e.preventDefault(); this.stopListening(); });
-            btn.addEventListener("pointercancel", () => this.stopListening());
         }
 
         const zone = this.els.gestureZone;

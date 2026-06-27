@@ -31,17 +31,30 @@ class RouteMap {
         });
     }
 
-    /** origin/dest: {lat, lng}. Pickup pin = red, destination pin = green. */
-    showTrip(origin, dest) {
+    /**
+     * origin/dest: {lat, lng, name?, address?}. geometry: [[lat,lng],...] real
+     * road route (OSRM). Pickup pin = red, destination pin = green. Markers get
+     * popups with name/address/coords so the pin can be verified by a sighted helper.
+     */
+    showTrip(origin, dest, geometry) {
         this.clear();
-        const line = L.polyline(
-            [[origin.lat, origin.lng], [dest.lat, dest.lng]],
-            { color: "#00c853", weight: 4, opacity: 0.75, dashArray: "6 8", lineCap: "round" }
-        );
+        const line = (geometry && geometry.length > 1)
+            ? L.polyline(geometry, { color: "#00c853", weight: 5, opacity: 0.85, lineCap: "round" })
+            : L.polyline([[origin.lat, origin.lng], [dest.lat, dest.lng]],
+                { color: "#00c853", weight: 4, opacity: 0.7, dashArray: "6 8", lineCap: "round" });
         this.layer.addLayer(line);
-        this.layer.addLayer(L.marker([origin.lat, origin.lng], { icon: this._pin("🧍", "#ef5350") }));
-        this.layer.addLayer(L.marker([dest.lat, dest.lng], { icon: this._pin("📍", "#00c853") }));
-        this.map.fitBounds(line.getBounds(), { padding: [50, 50], maxZoom: 15 });
+
+        const coord = (p) => `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+        const om = L.marker([origin.lat, origin.lng], { icon: this._pin("🧍", "#ef5350") })
+            .bindPopup(`<b>🔴 Điểm đón</b><br>${origin.name || ""}<br><small>${coord(origin)}</small>`);
+        const dm = L.marker([dest.lat, dest.lng], { icon: this._pin("📍", "#00c853") })
+            .bindPopup(`<b>🟢 Điểm đến</b><br>${dest.name || ""}`
+                + `${dest.address ? "<br>" + dest.address : ""}<br><small>${coord(dest)}</small>`);
+        this.layer.addLayer(om);
+        this.layer.addLayer(dm);
+        dm.openPopup();
+
+        this.map.fitBounds(line.getBounds(), { padding: [50, 50], maxZoom: 16 });
         setTimeout(() => this.map.invalidateSize(), 200);
     }
 }

@@ -10,6 +10,7 @@ import json
 
 from voice import groq_client, GROQ_MODEL
 from geocode import resolve_destination
+from routing import road_route
 
 # Fixed pickup (demo has no live GPS): International University, Thủ Đức.
 ORIGIN = {"name": "Trường Đại học Quốc tế", "lat": 10.8782, "lng": 106.8012}
@@ -72,10 +73,15 @@ def _tool_resolve(query):
     r = resolve_destination(query, ORIGIN["lat"], ORIGIN["lng"])
     if not r.get("ok"):
         return {"ok": False, "reason": r.get("reason", "not_found")}
+    # Real driving distance + road geometry (OSRM); fall back to straight-line.
+    rt = road_route(ORIGIN["lat"], ORIGIN["lng"], r["lat"], r["lng"])
+    km = rt["distanceKm"] if rt else r.get("distanceKm")
     return {
         "ok": True, "name": r["name"], "address": r.get("address"),
-        "lat": r["lat"], "lng": r["lng"], "distanceKm": r.get("distanceKm"),
+        "lat": r["lat"], "lng": r["lng"], "distanceKm": km,
+        "durationMin": rt["durationMin"] if rt else None,
         "alternatives": r.get("alternatives", []),
+        "geometry": rt["geometry"] if rt else None,
     }
 
 
@@ -125,15 +131,18 @@ def run_agent(messages: list[dict]) -> dict:
                     ui["destination"] = {
                         "name": res["name"], "address": res.get("address"),
                         "lat": res["lat"], "lng": res["lng"], "distanceKm": res.get("distanceKm"),
+                        "durationMin": res.get("durationMin"), "geometry": res.get("geometry"),
                     }
             elif tc.function.name == "book_ride":
                 res = _tool_book(args.get("destination", ""), args.get("vehicle", "bike"), args.get("distance_km", 0))
                 ui["booked"] = res
             else:
                 res = {"error": "unknown_tool"}
+            # Strip bulky geometry from the message handed back to the LLM (tokens).
+            tool_payload = {k: v for k, v in res.items() if k != "geometry"}
             msgs.append({
                 "role": "tool", "tool_call_id": tc.id,
-                "content": json.dumps(res, ensure_ascii=False),
+                "content": json.dumps(tool_payload, ensure_ascii=False),
             })
 
     return {"reply": "Xin lỗi, mình chưa xử lý xong. Bạn thử lại giúp nhé.", "messages": msgs, "ui": ui}
