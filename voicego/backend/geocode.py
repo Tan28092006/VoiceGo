@@ -20,6 +20,7 @@ import math
 import requests
 
 from voice import GEMINI_API_KEY, GEMINI_MODEL, groq_json
+from places_db import lookup as _local_lookup
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
@@ -123,6 +124,16 @@ def resolve_destination(text, user_lat=None, user_lng=None):
     """Resolve a spoken place name to a real address + coordinates (layered fallback)."""
     if not text.strip():
         return {"ok": False, "reason": "empty"}
+
+    # 0) Local gazetteer FIRST: verified landmarks resolve instantly with trusted
+    #    coords — no network call, no rate-limit, and it fixes places public
+    #    geocoders get wrong (Landmark 81, Nhà thờ Đức Bà, Bách Khoa, ...).
+    hit = _local_lookup(text)
+    if hit:
+        dist = round(_haversine_km(user_lat, user_lng, hit["lat"], hit["lng"]), 1) if user_lat is not None else None
+        return {"ok": True, "name": hit["name"], "address": hit["address"],
+                "province": "Thành phố Hồ Chí Minh", "lat": hit["lat"], "lng": hit["lng"],
+                "distanceKm": dist, "confidence": 1.0, "source": "verified", "alternatives": []}
 
     # 1) grounded Gemini (best, real search) if available; 2) Groq plain (fast, no limit).
     g = None
