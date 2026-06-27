@@ -13,6 +13,11 @@ import uuid
 from datetime import datetime, timezone
 
 try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
+
+try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 except ImportError:
@@ -173,12 +178,20 @@ def seed_demo_data():
     """Idempotently seed users, accessibility profiles, drivers, and places."""
     db = get_db()
     now = utcnow()
+    
+    password_hash = None
+    if bcrypt:
+        password_hash = bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode('utf-8')
+    else:
+        password_hash = "password123"
+
     users = [
         {
             "_id": DEMO_PASSENGER_ID,
             "full_name": "Minh Anh",
             "email": "minhanh.voicego@example.com",
             "phone": "0900000001",
+            "password": password_hash,
             "role": "passenger",
             "total_reward_points": 0,
             "created_at": now,
@@ -189,6 +202,7 @@ def seed_demo_data():
             "full_name": "Quoc Bao",
             "email": "quocbao.voicego@example.com",
             "phone": "0900000003",
+            "password": password_hash,
             "role": "passenger",
             "total_reward_points": 0,
             "created_at": now,
@@ -199,6 +213,7 @@ def seed_demo_data():
             "full_name": "Nguyen Van A",
             "email": "driver.a@example.com",
             "phone": "0900000002",
+            "password": password_hash,
             "role": "driver",
             "total_reward_points": 0,
             "created_at": now,
@@ -264,6 +279,29 @@ def get_user(user_id=DEMO_PASSENGER_ID):
         return None
     user["accessibility_profile"] = serialize_doc(db.accessibility_profiles.find_one({"user_id": user_id}))
     return user
+
+
+def authenticate_user(email, password):
+    db = get_db()
+    user_doc = db.users.find_one({"email": email})
+    if not user_doc:
+        return None
+        
+    stored_password = user_doc.get("password")
+    if not stored_password:
+        return None
+        
+    if bcrypt:
+        try:
+            if not bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
+                return None
+        except ValueError:
+            return None
+    else:
+        if stored_password != password:
+            return None
+            
+    return get_user(user_doc["_id"])
 
 
 def update_accessibility_profile(user_id, profile):

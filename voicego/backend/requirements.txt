@@ -8,3 +8,5 @@ openai==2.44.0
 pymongo==4.10.1
 # Optional: real web-search grounding for geocoding (else Groq + Nominatim).
 google-genai==2.10.0
+
+bcrypt==4.1.2
