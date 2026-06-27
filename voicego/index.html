@@ -37,7 +37,7 @@
     </div>
 
     <!-- Status + gesture zone (double-tap = confirm, swipe = change/cancel) -->
-    <section id="gesture-zone" class="gesture-zone" aria-label="Vùng xác nhận. Chạm hai lần để đồng ý, vuốt ngang để đổi xe, vuốt xuống để hủy.">
+    <section id="gesture-zone" class="gesture-zone" aria-label="Khu vực hội thoại với trợ lý">
         <div class="status-wrap" role="status" aria-live="assertive" aria-atomic="true">
             <div id="status" class="status-main">Đang khởi động…</div>
             <div id="substatus" class="status-sub"></div>
@@ -45,8 +45,7 @@
         <!-- Live speech-to-text: visual stream of what the user is saying -->
         <div id="live-transcript" class="live-transcript" aria-hidden="true"></div>
         <div class="confirm-hint">
-            <span id="vehicle-pill" class="vehicle-pill">xe ôm điện</span>
-            <span class="hint-text">Chạm 2 lần = Đồng ý · Vuốt ngang = Đổi xe · Vuốt xuống = Hủy</span>
+            <span class="hint-text">Nói bằng giọng: “đồng ý” để đặt · “ô tô” / “xe ôm” để chọn xe · “huỷ” để dừng</span>
         </div>
     </section>
 

@@ -62,7 +62,7 @@ class VoiceBookingApp {
 
     init() {
         if (this.els.originBox) this.els.originBox.textContent = this.origin.name;
-        this.announce("Chào bạn, tôi là VoiceGo.", "Chạm và giữ nửa dưới màn hình rồi nói điểm đến bạn muốn tới.", true);
+        this.announce("Chào bạn, tôi là VoiceGo.", "Chạm nút lớn bên dưới rồi nói điểm đến. Sau đó cứ trả lời bằng giọng nói.", true);
         this._checkBackend();
     }
 
@@ -73,9 +73,10 @@ class VoiceBookingApp {
         if (speak) this.speak(sub ? `${main} ${sub}` : main);
     }
 
+    /** Speak `text` and resolve when playback FINISHES (so we can then auto-listen). */
     async speak(text) {
         if (!text) return;
-        if (!BACKEND_URL) { this._browserSpeak(text); return; }
+        if (!BACKEND_URL) { await this._browserSpeak(text); return; }
         try {
             const res = await fetch(`${BACKEND_URL}/api/voice/tts`, {
                 method: "POST",
@@ -86,18 +87,26 @@ class VoiceBookingApp {
             if (!res.ok) throw new Error("tts " + res.status);
             const blob = await res.blob();
             this.audio.src = URL.createObjectURL(blob);
-            await this.audio.play();
+            await new Promise((resolve) => {
+                this.audio.onended = resolve;
+                this.audio.onerror = resolve;
+                this.audio.play().catch(resolve);
+            });
         } catch (e) {
-            this._browserSpeak(text);
+            await this._browserSpeak(text);
         }
     }
 
     _browserSpeak(text) {
-        if (!("speechSynthesis" in window)) return;
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = "vi-VN";
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(u);
+        return new Promise((resolve) => {
+            if (!("speechSynthesis" in window)) { resolve(); return; }
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = "vi-VN";
+            u.onend = resolve;
+            u.onerror = resolve;
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(u);
+        });
     }
 
     _vibrate(p) { if (navigator.vibrate) navigator.vibrate(p); }
@@ -241,13 +250,29 @@ class VoiceBookingApp {
             if (ui.destination) this._applyDestination(ui.destination);
             // Phase 2: a quote was made -> draw the real route (distance/price confirmed).
             if (ui.quote) this._applyQuote(ui.quote);
-            // Phase 3: booked.
-            if (ui.booked) { await this._showBooked(ui.booked, reply); }
-            else { this.announce(reply || "…", "", true); }
+
+            if (ui.booked) {
+                await this._showBooked(ui.booked, reply);
+                this.busy = false;
+                return; // conversation done — no auto-listen
+            }
+            // Speak the reply, then automatically listen again (hands-free).
+            this.announce(reply || "…", "", false);
+            this.busy = false;
+            await this.speak(reply);
+            this._autoListen();
         } catch (e) {
+            this.busy = false;
             this.announce("Lỗi kết nối agent.", "Bạn thử lại giúp tôi nhé.", true);
         }
-        this.busy = false;
+    }
+
+    /** After the agent finishes speaking, listen again so the user just talks back. */
+    async _autoListen() {
+        if (this.busy || this.recording) return;
+        await this._sleep(350);        // small gap so TTS tail isn't captured
+        if (this.busy || this.recording) return;
+        this.startListening();
     }
 
     _applyDestination(d) {
@@ -340,32 +365,17 @@ class VoiceBookingApp {
             "Chế độ ngoại tuyến: cần server agent để đặt xe thật.", true);
     }
 
-    // ----- Gestures (voice-equivalent commands feed the agent) ---------------
+    // ----- Input bindings (voice-first: everything else is spoken to the agent) --
     _bindGestures() {
         const btn = this.els.recordBtn;
         if (btn) {
-            // Tap to start, tap again to stop (toggle) — easier than press-and-hold,
-            // and works with keyboard/screen-reader activation (Enter/Space).
+            // One tap to talk (tap again to end early). Confirm / change vehicle /
+            // cancel are all done by VOICE — no extra gestures. After the agent
+            // replies it auto-listens, so usually you only tap once at the start.
             btn.addEventListener("click", (e) => {
                 e.preventDefault();
                 if (this.recording || this._starting) this.stopListening();
                 else this.startListening();
-            });
-        }
-
-        const zone = this.els.gestureZone;
-        if (zone) {
-            let lastTap = 0, sx = 0, sy = 0, st = 0;
-            zone.addEventListener("pointerdown", (e) => { sx = e.clientX; sy = e.clientY; st = Date.now(); });
-            zone.addEventListener("pointerup", (e) => {
-                const dx = e.clientX - sx, dy = e.clientY - sy, dt = Date.now() - st;
-                if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) { this._send("Đổi loại xe"); return; }
-                if (dy > 70 && dy > Math.abs(dx)) { this._send("Huỷ chuyến"); return; }
-                if (dt < 300 && Math.abs(dx) < 30 && Math.abs(dy) < 30) {
-                    const now = Date.now();
-                    if (now - lastTap < 350) { this._send("Đồng ý đặt xe"); lastTap = 0; }
-                    else lastTap = now;
-                }
             });
         }
 
@@ -383,7 +393,7 @@ class VoiceBookingApp {
                 if (this.els.agentResult && this.els.agentResult.textContent) {
                     this._hideAgentOverlay();
                     this._resetTrip();
-                    this.announce("Chuyến đi đã đặt xong.", "Chạm và giữ để đặt chuyến mới.", true);
+                    this.announce("Chuyến đi đã đặt xong.", "Chạm nút để đặt chuyến mới.", true);
                 }
             });
         }
