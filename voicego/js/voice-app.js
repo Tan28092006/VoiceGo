@@ -160,12 +160,72 @@ class VoiceBookingApp {
      * which transcribes with Groq Whisper (accurate Vietnamese). A browser caption
      * shows words live; Whisper is the authoritative text. FPT speaks the replies.
      */
-    async startListening() {
+    startListening() {
         if (this.busy || this.recording || this._starting) return;
         if (!BACKEND_URL) {
             this.announce("Chế độ ngoại tuyến.", "Cần chạy server agent để dùng giọng nói.", true);
             return;
         }
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SR) { this._listenBrowser(SR); return; }  // PRIMARY: browser Web Speech
+        this._listenWhisper();                         // FALLBACK: record + Whisper
+    }
+
+    /**
+     * PRIMARY input: the browser's Web Speech engine — most accurate for Vietnamese
+     * (this is the live caption you see). Its final transcript is sent to the agent.
+     * Auto-stops on silence.
+     */
+    _listenBrowser(SR) {
+        this.recording = true;
+        this._srErr = null;
+        this._vibrate(40);
+        if (this.els.recordBtn) this.els.recordBtn.classList.add("recording");
+        this._setRecLabel("🎙️ Đang nghe…");
+        this.announce("Đang nghe…", "Nói điểm đến — tôi tự nhận khi bạn ngừng nói.");
+        if (this.els.liveTranscript) this.els.liveTranscript.textContent = "";
+
+        let finalText = "";
+        const sr = new SR();
+        this.sr = sr;
+        sr.lang = "vi-VN"; sr.interimResults = true; sr.continuous = false; sr.maxAlternatives = 1;
+        sr.onresult = (e) => {
+            let interim = "";
+            for (const r of e.results) {
+                if (r.isFinal) finalText += r[0].transcript;
+                else interim += r[0].transcript;
+            }
+            const show = (finalText + interim).trim();
+            if (this.els.liveTranscript) this.els.liveTranscript.textContent = show ? `“${show}…”` : "";
+        };
+        sr.onerror = (ev) => { this._srErr = ev.error; };
+        sr.onend = async () => {
+            this.sr = null;
+            this._clearRecUI();
+            const text = finalText.trim();
+            if (text) { this._emptyCount = 0; this._send(text); return; }
+            if (this._srErr === "not-allowed" || this._srErr === "service-not-allowed") {
+                this._emptyCount = 0;
+                this.announce("Cần quyền micro.", "Hãy cho phép micro rồi chạm nút thử lại.", true);
+                return;
+            }
+            this._emptyCount = (this._emptyCount || 0) + 1;
+            if (this._emptyCount <= 2) {
+                const m = "Mình chưa nghe rõ.", s = "Bạn nói lại giúp tôi nhé.";
+                this.announce(m, s, false);
+                await this.speak(`${m} ${s}`);
+                this._autoListen();
+            } else {
+                this._emptyCount = 0;
+                this.announce("Mình vẫn chưa nghe được.", "Chạm nút khi bạn sẵn sàng nói nhé.", true);
+            }
+        };
+        try { sr.start(); }
+        catch (e) { this.sr = null; this._clearRecUI(); this.announce("Không bật được micro.", "Bạn thử lại nhé.", true); }
+    }
+
+    /** FALLBACK input: record audio + Groq Whisper (browsers without Web Speech). */
+    async _listenWhisper() {
         this._starting = true;
         this._wantStop = false;
         this._vibrate(40);
@@ -189,10 +249,11 @@ class VoiceBookingApp {
         this._maxTimer = setTimeout(() => this._finishRecording(), 15000);
     }
 
-    /** Tap again to end early (otherwise VAD ends it on silence). */
+    /** Tap again to end early (otherwise it ends automatically on silence). */
     stopListening() {
-        if (this._starting) { this._wantStop = true; return; }
-        this._finishRecording();
+        if (this.sr) { try { this.sr.stop(); } catch (e) {} return; }  // browser path
+        if (this._starting) { this._wantStop = true; return; }          // whisper starting
+        this._finishRecording();                                         // whisper path
     }
 
     async _finishRecording() {
