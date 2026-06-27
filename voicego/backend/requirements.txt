@@ -5,5 +5,6 @@ python-multipart==0.0.9
 requests==2.32.3
 python-dotenv==1.0.1
 openai==2.44.0
+pymongo==4.10.1
 # Optional: real web-search grounding for geocoding (else Groq + Nominatim).
 google-genai==2.10.0

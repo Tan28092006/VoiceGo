@@ -36,6 +36,32 @@ py -m pip install -r requirements.txt
 py -m uvicorn main:app --port 8000
 ```
 
+### MongoDB (lưu profile, chuyến đi, báo cáo accessibility)
+```bash
+cd voicego/backend
+mkdir -p mongo-data
+mongod --dbpath ./mongo-data
+```
+Trong terminal khác:
+```bash
+cd voicego/backend
+cp .env.example .env
+# MONGODB_URI=mongodb://localhost:27017
+py -m uvicorn main:app --port 8000
+```
+Seed dữ liệu demo:
+```bash
+curl -X POST http://localhost:8000/api/db/seed
+```
+
+Các endpoint chính:
+- `GET /api/db/status` — kiểm tra MongoDB + số lượng collection.
+- `GET/PUT /api/me/accessibility-profile` — profile khuyết tật của hành khách demo.
+- `GET /api/places/accessibility?lat=10.7769&lng=106.7009` — điểm đến gần đó kèm accessibility score.
+- `POST /api/reports` — báo cáo lối vào/điểm đến accessible và cộng điểm thưởng.
+- `POST /api/rides` — tạo ride request thủ công.
+- Agent `book_ride` tự tạo `ride_requests` khi người dùng xác nhận đặt xe bằng giọng nói.
+
 ### Frontend
 ```bash
 cd voicego

@@ -19,6 +19,7 @@ import unicodedata
 from voice import groq_client, GROQ_MODEL
 from geocode import resolve_destination, _nominatim, _haversine_km
 from routing import road_route
+from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request
 
 MAX_ALT_KM = 80  # drop same-name places too far away (e.g. another province)
 
@@ -230,11 +231,45 @@ def _do_book(msgs, vehicle):
     vehicle = "car" if vehicle == "car" else "bike"
     km = (q or {}).get("distanceKm")
     price = (q or {}).get("priceVnd") or _quote_price(vehicle, km or 0)
-    return {
+    fallback = {
         "ok": True, "kind": "booked", "driver": "Nguyễn Văn A", "plate": "59-X1 234.56",
         "etaMin": 4, "vehicle": vehicle, "destination": ref.get("name"),
         "address": ref.get("address"), "priceVnd": price, "pickup": ORIGIN["name"],
     }
+    try:
+        ride = create_ride_request(
+            passenger_id=DEMO_PASSENGER_ID,
+            pickup={"name": ORIGIN["name"], "lat": ORIGIN["lat"], "lng": ORIGIN["lng"]},
+            destination={
+                "name": ref.get("name"),
+                "address": ref.get("address"),
+                "lat": ref.get("lat"),
+                "lng": ref.get("lng"),
+            },
+            booking_method="ai_voice",
+            vehicle=vehicle,
+            estimated_price=price,
+            estimated_distance_km=km,
+            estimated_arrival_minutes=(q or {}).get("durationMin"),
+        )
+        driver = ride.get("driver") or {}
+        driver_user = ride.get("driver_user") or {}
+        return {
+            **fallback,
+            "rideId": ride.get("id"),
+            "driverId": ride.get("driver_id"),
+            "driver": driver_user.get("full_name") or fallback["driver"],
+            "plate": driver.get("license_plate") or fallback["plate"],
+            "etaMin": ride.get("estimated_arrival_minutes") or fallback["etaMin"],
+            "accessibilityType": ride.get("accessibility_type"),
+            "driverAlertMessage": ride.get("driver_alert_message"),
+            "driverAlertAcknowledged": ride.get("driver_alert_acknowledged"),
+            "dbSaved": True,
+        }
+    except MongoUnavailable as exc:
+        return {**fallback, "dbSaved": False, "dbReason": str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        return {**fallback, "dbSaved": False, "dbReason": f"database_error: {exc}"}
 
 
 def run_agent(messages: list[dict]) -> dict:

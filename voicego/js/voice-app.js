@@ -393,9 +393,12 @@ class VoiceBookingApp {
         const priceK = Math.round((booked.priceVnd || 0) / 1000);
         const driver = `Tài xế ${booked.driver} · ${booked.plate} · ${v} · `
             + `đón tại ${booked.pickup} sau ${booked.etaMin} phút · giá ${priceK} nghìn đồng.`;
-        if (this.els.agentResult) this.els.agentResult.textContent = driver;
+        const alert = booked.driverAlertMessage ? `\nCảnh báo tài xế: ${booked.driverAlertMessage}` : "";
+        const saved = booked.rideId ? `\nMã chuyến: ${booked.rideId}` : "";
+        if (this.els.agentResult) this.els.agentResult.textContent = driver + alert + saved;
         const spinner = this.els.agentOverlay && this.els.agentOverlay.querySelector(".agent-spinner");
         if (spinner) spinner.style.display = "none";
+        this.speak(`${reply} ${driver} ${booked.driverAlertMessage || ""}`);
         // Speak the agent's concise Vietnamese confirmation (FPT, same voice as the
         // whole flow). Driver details are shown visually.
         await this.speak(reply || driver);
