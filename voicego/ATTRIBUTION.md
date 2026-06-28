@@ -34,8 +34,8 @@ Theo quy định BTC: dự án được phát triển **có hỗ trợ của cô
 ## Khoá API & bí mật
 Tất cả khoá nằm trong `backend/.env` (**đã gitignore — không commit**). Mẫu cấu hình ở `backend/.env.example`.
 
-## Pre-existing code
-Phần realtime tài xế/khách (Socket.IO + một số màn UI tham khảo) khởi nguồn từ nhánh `detection` của nhóm và được tích hợp/viết lại sang React trong dự án này.
+## Mã nguồn của nhóm
+Toàn bộ mã nguồn dự án do **nhóm tự viết từ đầu (start from scratch)**. Phần realtime tài xế ↔ khách (Socket.IO) cũng do nhóm tự phát triển ở một nhánh khác rồi tích hợp vào đây — **không** dùng mã có sẵn của bên thứ ba (ngoài các thư viện/dịch vụ đã liệt kê ở trên).
 
 ## License
 Mã nguồn dự án phát hành theo **MIT License** (trừ phần dữ liệu/dịch vụ bên thứ ba giữ license gốc nêu trên).
