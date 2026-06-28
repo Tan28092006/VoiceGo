@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VoiceGo — Admin reports</title>
+    <link rel="stylesheet" href="css/report-admin.css">
+</head>
+<body>
+    <main class="page-shell admin-shell">
+        <header class="top-bar">
+            <a href="home.html" aria-label="Quay lại trang chủ">‹</a>
+            <div>
+                <p>Admin</p>
+                <h1>Accessibility reports</h1>
+            </div>
+        </header>
+
+        <section class="admin-summary" aria-label="Tổng quan report">
+            <article>
+                <span>Pending</span>
+                <strong>3</strong>
+            </article>
+            <article>
+                <span>Verified</span>
+                <strong>12</strong>
+            </article>
+            <article>
+                <span>Rejected</span>
+                <strong>2</strong>
+            </article>
+        </section>
+
+        <section class="report-list" aria-label="Danh sách report accessibility">
+            <article class="admin-report-card">
+                <div class="report-head">
+                    <div>
+                        <h2>Chợ Bến Thành</h2>
+                        <p>Đường Lê Lợi, Phường Bến Thành, Quận 1</p>
+                    </div>
+                    <span class="status pending">pending</span>
+                </div>
+                <dl>
+                    <div><dt>Lat</dt><dd>10.7769000</dd></div>
+                    <div><dt>Lng</dt><dd>106.7009000</dd></div>
+                    <div><dt>Entrance</dt><dd>Có</dd></div>
+                    <div><dt>Score</dt><dd>5/5</dd></div>
+                </dl>
+                <div class="admin-actions">
+                    <button class="reject" type="button">Reject</button>
+                    <button class="verify" type="button">Verify</button>
+                </div>
+            </article>
+
+            <article class="admin-report-card">
+                <div class="report-head">
+                    <div>
+                        <h2>Thư viện Trung tâm</h2>
+                        <p>Khu đô thị ĐHQG, Thành phố Thủ Đức</p>
+                    </div>
+                    <span class="status verified">verified</span>
+                </div>
+                <dl>
+                    <div><dt>Lat</dt><dd>10.8750000</dd></div>
+                    <div><dt>Lng</dt><dd>106.8020000</dd></div>
+                    <div><dt>Entrance</dt><dd>Có</dd></div>
+                    <div><dt>Score</dt><dd>4/5</dd></div>
+                </dl>
+                <div class="admin-actions">
+                    <button class="reject" type="button" disabled>Reject</button>
+                    <button class="verify" type="button" disabled>Verified</button>
+                </div>
+            </article>
+
+            <article class="admin-report-card">
+                <div class="report-head">
+                    <div>
+                        <h2>Hẻm Nguyễn Văn Cừ</h2>
+                        <p>Quận 5, Thành phố Hồ Chí Minh</p>
+                    </div>
+                    <span class="status rejected">rejected</span>
+                </div>
+                <dl>
+                    <div><dt>Lat</dt><dd>10.7520000</dd></div>
+                    <div><dt>Lng</dt><dd>106.6900000</dd></div>
+                    <div><dt>Entrance</dt><dd>Không</dd></div>
+                    <div><dt>Score</dt><dd>1/5</dd></div>
+                </dl>
+                <div class="admin-actions">
+                    <button class="reject" type="button" disabled>Rejected</button>
+                    <button class="verify" type="button" disabled>Verify</button>
+                </div>
+            </article>
+        </section>
+    </main>
+</body>
+</html>
