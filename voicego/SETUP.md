@@ -39,6 +39,8 @@ cd voicego/frontend && npm run dev
 # Máy tính: https://localhost:5173   |  Điện thoại cùng WiFi: https://<IP-máy>:5173
 ```
 > **HTTPS bắt buộc cho mic trên điện thoại**: trình duyệt chỉ cho dùng micro ở “secure context” (https hoặc localhost). Vite dev đã bật HTTPS tự ký (qua cảnh báo chứng chỉ 1 lần).
+>
+> 🔗 **Demo hiện tại** (chưa deploy) dùng đúng link local này: **https://10.236.55.216:5173/**. Hướng dẫn vào web qua cảnh báo chứng chỉ (chế độ nâng cao) + yêu cầu **cùng WiFi** cho luồng tài xế nhận cuốc: xem [DEMO.md](DEMO.md).
 
 ### C. Realtime tài xế (tuỳ chọn — màn tài xế/PIN/chuyến đi)
 Phần ghép tài xế ↔ khách dùng **Socket.IO server (cổng 3001)** — xem hợp đồng sự kiện ở [REALTIME_INTEGRATION.md](REALTIME_INTEGRATION.md). App kết nối qua proxy `/socket.io` (dev) hoặc `?realtime=http://<host>:3001`. Luồng đặt xe + agent + geocode chạy **không cần** server này.

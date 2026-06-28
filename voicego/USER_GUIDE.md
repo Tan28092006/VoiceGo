@@ -2,6 +2,8 @@
 
 VoiceGo là app **đặt xe bằng giọng nói cho người khiếm thị / khuyết tật vận động** ở TP.HCM. Mọi thao tác chính bằng giọng nói; nút bấm chỉ là phụ trợ.
 
+> 🔗 **Demo (chạy local):** https://10.236.55.216:5173/ — cách vào qua cảnh báo chứng chỉ + yêu cầu **cùng WiFi** xem [DEMO.md](DEMO.md).
+
 ## Đăng nhập
 Mở app → nhập email + mật khẩu (tài khoản demo ở [SETUP.md](SETUP.md)). Vai trò (khách / tài xế) tự nhận theo tài khoản.
 
