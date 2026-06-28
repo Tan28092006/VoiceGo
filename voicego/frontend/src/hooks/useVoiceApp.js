@@ -1,55 +1,62 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import * as api from '../services/api';
-import { speak, stop as stopSpeech } from '../services/tts';
+import { speak, stop as stopSpeech, unlockAudio } from '../services/tts';
 import VoiceRecorder from '../services/voiceRecorder';
-import { understandCommand, VEHICLE_LABEL } from '../services/voiceNlu';
-import Graph from '../services/graph';
-import { connectSocket, emitPassengerWaiting, loginPassenger, disconnectSocket } from '../services/socket';
+import { connectSocket, emitPassengerWaiting, disconnectSocket } from '../services/socket';
 
-const REALTIME_PASSENGER = { phone: '0909000111', password: 'demo' };
+// STT engine. TẠM THỜI mặc định FPT.AI (để test trên điện thoại); mở với
+// ?stt=whisper để quay lại Groq Whisper. (Backend: fpt -> FPT trước, Groq fallback.)
+const STT_ENGINE = new URLSearchParams(window.location.search).get('stt') || 'fpt';
 
 export default function useVoiceApp() {
   const { state, dispatch } = useApp();
   const recorderRef = useRef(null);
   const busyRef = useRef(false);
   const socketRef = useRef(null);
+  const recordingRef = useRef(false);   // mirror of state.recording (no stale guard)
+  const messagesRef = useRef([]);       // latest conversation (no stale history)
+  const userRef = useRef(null);         // logged-in user (id used for driver matching)
+  const emptyRef = useRef(0);           // consecutive "heard nothing" count
+  const startedRef = useRef(false);     // auto-start greeting only once
+  const streamRef = useRef(null);       // timer for word-by-word text streaming
+  const arrivedRef = useRef(false);     // announce PIN once per trip (guard double events)
+  const pausedRef = useRef(false);      // user manually turned the mic OFF -> stop auto-listen
 
-  // Check backend health on mount
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await api.checkHealth();
-        if (!cancelled) dispatch({ type: 'SET_BACKEND_ONLINE', payload: data?.status === 'ok' });
-      } catch {
-        if (!cancelled) dispatch({ type: 'SET_BACKEND_ONLINE', payload: false });
-      }
-      // Announce ready
-      dispatch({ type: 'SET_STATUS', payload: { main: 'Chạm mic và nói điểm đến', sub: '' } });
-      speak('Xin chào! Chạm nút mic và nói điểm đến của bạn.');
-    })();
-    return () => { cancelled = true; };
+  // Latest-value refs so the hands-free loop callbacks can call each other
+  // without stale closures.
+  const startListeningRef = useRef(() => {});
+  const sendRef = useRef(() => {});
+
+  useEffect(() => { recordingRef.current = state.recording; }, [state.recording]);
+  useEffect(() => { messagesRef.current = state.messages; }, [state.messages]);
+  useEffect(() => { userRef.current = state.user; }, [state.user]);
+
+  // Stream the agent reply word-by-word onto the stage (async, like ChatGPT) so
+  // judges see the LLM "typing" while the TTS speaks.
+  const _streamText = useCallback((text) => {
+    if (streamRef.current) clearTimeout(streamRef.current);
+    dispatch({ type: 'SET_STREAM', payload: '' });
+    const words = String(text || '').split(/(\s+)/);   // keep whitespace tokens
+    let i = 0, acc = '';
+    const tick = () => {
+      acc += words[i++];
+      dispatch({ type: 'SET_STREAM', payload: acc });
+      streamRef.current = i < words.length ? setTimeout(tick, 45) : null;
+    };
+    if (words.length) tick();
   }, [dispatch]);
 
-  // Start listening
-  const startListening = useCallback(async () => {
-    if (busyRef.current || state.recording) return;
-    dispatch({ type: 'SET_RECORDING', payload: true });
-    dispatch({ type: 'SET_STATUS', payload: { main: '🎙️ Đang nghe…', sub: 'Nói điểm đến của bạn' } });
-    dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
-    stopSpeech();
+  // Hands-free: after the agent speaks (or we hear nothing), reopen the mic.
+  const _autoListen = useCallback(() => {
+    setTimeout(() => {
+      // Don't reopen if busy, already listening, OR the user manually paused.
+      if (busyRef.current || recordingRef.current || pausedRef.current) return;
+      startListeningRef.current();
+    }, 450);
+  }, []);
 
-    // Try browser SpeechRecognition first
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      _listenBrowser(SR);
-    } else {
-      _listenWhisper();
-    }
-  }, [state.recording, dispatch]);
-
-  // Browser speech recognition
+  // ---- Speech-to-text (browser Web Speech, primary) ----
   const _listenBrowser = useCallback((SR) => {
     const recognition = new SR();
     recognition.lang = 'vi-VN';
@@ -57,171 +64,232 @@ export default function useVoiceApp() {
     recognition.continuous = false;
     recognition.maxAlternatives = 1;
 
+    let finalText = '';
     let silenceTimer = null;
 
     recognition.onresult = (e) => {
       let interim = '';
-      let finalText = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) finalText += t;
         else interim += t;
       }
-      dispatch({ type: 'SET_TRANSCRIPT', payload: interim || finalText });
+      dispatch({ type: 'SET_TRANSCRIPT', payload: (finalText + interim).trim() });
+      clearTimeout(silenceTimer);
       if (finalText) {
-        clearTimeout(silenceTimer);
-        recognition.stop();
-        dispatch({ type: 'SET_RECORDING', payload: false });
-        _send(finalText.trim());
+        try { recognition.stop(); } catch {}
       } else {
-        clearTimeout(silenceTimer);
-        silenceTimer = setTimeout(() => recognition.stop(), 2000);
+        silenceTimer = setTimeout(() => { try { recognition.stop(); } catch {} }, 2500);
       }
     };
 
     recognition.onerror = (e) => {
       console.warn('Speech recognition error:', e.error);
+      recordingRef.current = false;
       dispatch({ type: 'SET_RECORDING', payload: false });
-      if (e.error === 'no-speech') {
-        dispatch({ type: 'SET_STATUS', payload: { main: 'Không nghe thấy', sub: 'Hãy chạm mic và thử lại' } });
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        dispatch({ type: 'SET_STATUS', payload: { main: 'Cần quyền micro', sub: 'Cho phép micro rồi chạm màn hình để nói' } });
       }
     };
 
     recognition.onend = () => {
+      recordingRef.current = false;
       dispatch({ type: 'SET_RECORDING', payload: false });
+      const text = finalText.trim();
+      if (text) {
+        emptyRef.current = 0;
+        sendRef.current(text);
+      } else {
+        // Heard nothing — keep listening hands-free, but cap retries so the mic
+        // doesn't stay on forever in silence.
+        emptyRef.current += 1;
+        if (emptyRef.current <= 3) {
+          _autoListen();
+        } else {
+          emptyRef.current = 0;
+          dispatch({ type: 'SET_STATUS', payload: { main: 'Mình chưa nghe rõ', sub: 'Chạm vào màn hình để nói lại' } });
+        }
+      }
     };
 
     recorderRef.current = recognition;
-    recognition.start();
-  }, [dispatch]);
-
-  // Whisper fallback
-  const _listenWhisper = useCallback(async () => {
-    if (!recorderRef.current) recorderRef.current = new VoiceRecorder();
-    const recorder = recorderRef.current;
-    
-    await recorder.start({
-      onAutoStop: async () => {
-        const wavBlob = await recorder.stop();
-        dispatch({ type: 'SET_RECORDING', payload: false });
-        if (wavBlob && wavBlob.size > 1000) {
-          dispatch({ type: 'SET_STATUS', payload: { main: 'Đang nhận diện giọng nói…', sub: '' } });
-          try {
-            const text = await api.speechToText(wavBlob);
-            if (text) {
-              dispatch({ type: 'SET_TRANSCRIPT', payload: text });
-              _send(text);
-            } else {
-              dispatch({ type: 'SET_STATUS', payload: { main: 'Không nghe rõ', sub: 'Chạm mic và thử lại' } });
-            }
-          } catch {
-            dispatch({ type: 'SET_STATUS', payload: { main: 'Lỗi nhận diện', sub: 'Chạm mic và thử lại' } });
-          }
-        }
-      },
-    });
-  }, [dispatch]);
-
-  // Stop listening
-  const stopListening = useCallback(() => {
-    if (recorderRef.current) {
-      if (recorderRef.current instanceof (window.SpeechRecognition || window.webkitSpeechRecognition || function(){})) {
-        recorderRef.current.stop();
-      } else if (recorderRef.current.stop) {
-        recorderRef.current.stop();
-      }
+    try {
+      recognition.start();
+    } catch (err) {
+      console.warn('Speech recognition start failed:', err);
+      recordingRef.current = false;
+      dispatch({ type: 'SET_RECORDING', payload: false });
     }
+  }, [dispatch, _autoListen]);
+
+  // ---- Speech-to-text (Whisper via backend, fallback) ----
+  const _listenWhisper = useCallback(async () => {
+    if (!recorderRef.current || typeof recorderRef.current.start !== 'function') {
+      recorderRef.current = new VoiceRecorder();
+    }
+    const recorder = recorderRef.current;
+    try {
+      await recorder.start({
+        silenceMs: 950,          // cut off a bit sooner -> lower latency
+        noSpeechMs: 7000,
+        onAutoStop: async () => {
+          const wavBlob = await recorder.stop();
+          recordingRef.current = false;
+          dispatch({ type: 'SET_RECORDING', payload: false });
+          if (wavBlob && wavBlob.size > 1000) {
+            dispatch({ type: 'SET_STATUS', payload: { main: 'Đang nhận diện giọng nói…', sub: '' } });
+            try {
+              const text = await api.speechToText(wavBlob, 'speech.wav', STT_ENGINE);
+              if (text) { emptyRef.current = 0; dispatch({ type: 'SET_TRANSCRIPT', payload: text }); sendRef.current(text); }
+              else { _autoListen(); }
+            } catch { dispatch({ type: 'SET_STATUS', payload: { main: 'Lỗi nhận diện', sub: 'Chạm màn hình để thử lại' } }); }
+          } else { _autoListen(); }
+        },
+      });
+    } catch (err) {
+      console.warn('Recorder start failed:', err);
+      recordingRef.current = false;
+      dispatch({ type: 'SET_RECORDING', payload: false });
+      dispatch({ type: 'SET_STATUS', payload: { main: 'Không bật được micro', sub: 'Cho phép micro rồi chạm màn hình' } });
+    }
+  }, [dispatch, _autoListen]);
+
+  // ---- Start / stop listening ----
+  const startListening = useCallback(() => {
+    if (busyRef.current || recordingRef.current) return;
+    recordingRef.current = true;
+    dispatch({ type: 'SET_RECORDING', payload: true });
+    dispatch({ type: 'SET_STATUS', payload: { main: '🎙️ Đang nghe…', sub: 'Nói điểm đến của bạn' } });
+    dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
+    stopSpeech();
+    // Always use Groq Whisper (record -> backend STT) on every device for
+    // consistent, accurate Vietnamese recognition.
+    _listenWhisper();
+  }, [dispatch, _listenWhisper]);
+  startListeningRef.current = startListening;
+
+  const stopListening = useCallback(() => {
+    const r = recorderRef.current;
+    if (r) { try { r.stop(); } catch {} }
+    recordingRef.current = false;
     dispatch({ type: 'SET_RECORDING', payload: false });
   }, [dispatch]);
 
-  // Send text to agent (or local fallback)
+  // Tap anywhere (gesture zone / mic button) to start or stop — fallback to the
+  // hands-free flow (e.g. if the browser blocked auto-start without a gesture).
+  const toggleListening = useCallback(() => {
+    unlockAudio();   // keep mobile audio unlocked on every tap
+    if (recordingRef.current) {
+      // Manual OFF -> stay off (suppress the hands-free auto-reopen).
+      pausedRef.current = true;
+      stopListening();
+      dispatch({ type: 'SET_STATUS', payload: { main: 'Đã tắt micro', sub: 'Chạm nút để nói tiếp' } });
+      return;
+    }
+    if (busyRef.current) { pausedRef.current = true; return; }
+    // Manual ON -> resume the SAME conversation (memory intact).
+    pausedRef.current = false;
+    emptyRef.current = 0;
+    startListening();
+  }, [startListening, stopListening, dispatch]);
+
+  // ---- Send a turn to the agent (or local fallback) ----
   const _send = useCallback(async (text) => {
-    if (busyRef.current) return;
+    if (!text || busyRef.current) return;
     busyRef.current = true;
     dispatch({ type: 'SET_BUSY', payload: true });
     dispatch({ type: 'SET_STATUS', payload: { main: '🤖 Đang xử lý…', sub: text } });
 
+    let keepListening = true;
     try {
-      if (state.backendOnline) {
-        // Online mode: use agent
-        const newMessages = [...state.messages, { role: 'user', content: text }];
-        dispatch({ type: 'SET_MESSAGES', payload: newMessages });
+      // ALWAYS send to the LLM agent. (Don't gate on a one-shot health check —
+      // a single transient failure must not silently downgrade to the tiny local
+      // place matcher, which returns wrong places like "Tôn Đức Thắng".)
+      const newMessages = [...messagesRef.current, { role: 'user', content: text }];
+      messagesRef.current = newMessages;
+      dispatch({ type: 'SET_MESSAGES', payload: newMessages });
 
-        const result = await api.agentChat(newMessages);
-        const { reply, messages: updatedMsgs, ui } = result;
+      const result = await api.agentChat(newMessages);
+      const { reply, messages: updatedMsgs, ui } = result;
+      dispatch({ type: 'SET_BACKEND_ONLINE', payload: true });  // confirmed reachable
 
-        dispatch({ type: 'SET_MESSAGES', payload: updatedMsgs || newMessages });
-        dispatch({ type: 'SET_STATUS', payload: { main: reply || 'Đã xử lý', sub: '' } });
+      if (updatedMsgs) { messagesRef.current = updatedMsgs; }
+      dispatch({ type: 'SET_MESSAGES', payload: updatedMsgs || newMessages });
+      dispatch({ type: 'SET_STATUS', payload: { main: reply || 'Đã xử lý', sub: '' } });
 
-        // Apply UI side-effects
-        if (ui) {
-          if (ui.destination) {
-            dispatch({ type: 'SET_DESTINATION', payload: ui.destination });
-            dispatch({ type: 'SET_STATE', payload: 'destination_set' });
-          }
-          if (ui.quote) {
-            dispatch({ type: 'SET_QUOTE', payload: ui.quote });
-            dispatch({ type: 'SET_STATE', payload: 'confirming' });
-          }
-          if (ui.booked) {
-            dispatch({ type: 'SET_BOOKING', payload: ui.booked });
-            dispatch({ type: 'SET_DRIVER', payload: ui.booked.driver });
-            dispatch({ type: 'SET_STATE', payload: 'booking' });
-            // Show agent overlay with typewriter effect
-            dispatch({ type: 'SET_AGENT_LOG', payload: [] });
-            dispatch({ type: 'SET_AGENT_RESULT', payload: '' });
-            _showBooked(ui.booked, reply);
-          }
-          if (ui.ended) {
-            dispatch({ type: 'RESET_TRIP' });
-          }
+      let spoke = false;
+      const concrete = !!(ui && (ui.destination || ui.quote || ui.booked || ui.ended || ui.candidates));
+      if (ui) {
+        if (ui.candidates) {
+          // Show the options ON THE MAP (numbered; accessible ones in green).
+          dispatch({ type: 'SET_CANDIDATES', payload: ui.candidates });
+          dispatch({ type: 'SET_DESTINATION', payload: null });
+          dispatch({ type: 'SET_QUOTE', payload: null });
+          dispatch({ type: 'SET_STATE', payload: 'destination_set' });
         }
-
-        // Speak the reply
-        if (reply) await speak(reply);
-      } else {
-        // Offline fallback
-        _localFallback(text);
+        if (ui.destination) {
+          dispatch({ type: 'SET_CANDIDATES', payload: null });   // a place was chosen
+          dispatch({ type: 'SET_DESTINATION', payload: ui.destination });
+          dispatch({ type: 'SET_STATE', payload: 'destination_set' });
+        }
+        if (ui.quote) {
+          dispatch({ type: 'SET_QUOTE', payload: ui.quote });
+          dispatch({ type: 'SET_STATE', payload: 'confirming' });
+        }
+        if (ui.booked) {
+          // Hand off to the realtime driver search: show "Đang tìm tài xế" and
+          // wait for a REAL driver (driver-arrived). Do NOT announce the agent's
+          // auto-assigned driver here — that's what confusingly showed
+          // "Tài xế Nguyễn Văn A" while no driver was online.
+          keepListening = false;
+          dispatch({ type: 'SET_BOOKING', payload: ui.booked });
+          dispatch({ type: 'SET_DRIVER', payload: null });
+          dispatch({ type: 'SET_PIN', payload: null });
+          dispatch({ type: 'SET_STATE', payload: 'trip_live' });   // TripOverlay -> "Đang tìm tài xế…"
+          _startRealtime(ui.booked);
+          const m = 'Đã đặt xe. Đang tìm tài xế cho bạn, vui lòng chờ trong giây lát.';
+          _streamText(m); await speak(m);
+          spoke = true;
+        }
+        if (ui.ended) {
+          keepListening = false;           // user cancelled -> stop
+          dispatch({ type: 'RESET_TRIP' });
+        }
       }
+      // No concrete place this turn (agent is asking / listing options / clarifying)
+      // -> collapse the map + expand the agent. KEEP destination/quote data so the
+      // ride screens (RideMoving) still have it after booking.
+      if (!concrete) {
+        dispatch({ type: 'SET_STATE', payload: 'listening' });
+      }
+
+      if (reply && !spoke) { _streamText(reply); await speak(reply); }
     } catch (err) {
-      console.error('Agent error:', err);
-      // Try local fallback on error
+      console.error('Agent error -> local fallback:', err);
+      dispatch({ type: 'SET_BACKEND_ONLINE', payload: false });
       _localFallback(text);
     } finally {
       busyRef.current = false;
       dispatch({ type: 'SET_BUSY', payload: false });
+      if (keepListening) _autoListen();      // hands-free: keep the conversation going
     }
-  }, [state.backendOnline, state.messages, dispatch]);
+  }, [dispatch, _autoListen]);
+  sendRef.current = _send;
 
-  // Local fallback using voice-nlu
-  const _localFallback = useCallback((text) => {
-    const result = understandCommand(text);
-    if (result.place) {
-      const dest = { name: result.place.name, lat: result.place.lat, lng: result.place.lng };
-      const distKm = Graph.haversineDistance(
-        state.origin.lat, state.origin.lng, dest.lat, dest.lng
-      ) / 1000;
-      const price = result.vehicleLabel 
-        ? (result.vehicle === 'car' ? 29000 + 12000 * distKm : 12000 + 4000 * distKm)
-        : 12000 + 4000 * distKm;
-      
-      dispatch({ type: 'SET_DESTINATION', payload: dest });
-      dispatch({ type: 'SET_QUOTE', payload: { price: Math.round(price), distance: distKm.toFixed(1) } });
-      dispatch({ type: 'SET_STATE', payload: 'confirming' });
-      
-      const msg = `Điểm đến: ${dest.name}. Khoảng cách ${distKm.toFixed(1)} km. Giá ${Math.round(price).toLocaleString('vi')} đồng. Nói đồng ý để đặt xe.`;
-      dispatch({ type: 'SET_STATUS', payload: { main: msg, sub: '' } });
-      speak(msg);
-    } else {
-      dispatch({ type: 'SET_STATUS', payload: { main: 'Không nhận ra điểm đến', sub: 'Hãy thử lại' } });
-      speak('Xin lỗi, tôi không nhận ra điểm đến. Hãy thử nói lại.');
-    }
-  }, [state.origin, dispatch]);
+  // ---- Connection fallback ----
+  // The LLM agent is the ONLY source of destinations. If it's unreachable we do
+  // NOT guess a place locally (that produced wrong places like "Điện Biên Phủ" +
+  // NaN price) — we just ask the user to retry.
+  const _localFallback = useCallback(() => {
+    const msg = 'Xin lỗi, mình chưa kết nối được máy chủ. Bạn thử nói lại sau giây lát nhé.';
+    dispatch({ type: 'SET_STATUS', payload: { main: 'Chưa kết nối được trợ lý', sub: 'Kiểm tra mạng rồi thử lại' } });
+    _streamText(msg);
+    speak(msg);
+  }, [dispatch]);
 
-  // Show booked overlay with typewriter effect
+  // ---- Booking overlay + realtime handoff ----
   const _showBooked = useCallback(async (booked, reply) => {
     dispatch({ type: 'SET_STATE', payload: 'booking' });
-    // Typewriter the reply into agent log
     if (reply) {
       const words = reply.split(' ');
       for (let i = 0; i < words.length; i++) {
@@ -229,61 +297,108 @@ export default function useVoiceApp() {
         await new Promise(r => setTimeout(r, 50));
       }
     }
-    // Show driver result
-    const driver = booked.driver;
-    if (driver) {
-      dispatch({ type: 'SET_AGENT_RESULT', payload: `Tài xế: ${driver.name} — ${driver.plate}` });
-    }
-    // Start realtime
     _startRealtime(booked, reply);
   }, [dispatch]);
 
-  // Start realtime driver tracking
   const _startRealtime = useCallback(async (booked) => {
-    const params = new URLSearchParams(window.location.search);
-    const realtimeUrl = params.get('realtime') || 'http://localhost:3001';
-    
-    try {
-      await loginPassenger(realtimeUrl, REALTIME_PASSENGER);
-    } catch (e) {
-      console.warn('Realtime login failed:', e);
+    // Join the driver-matching queue with the logged-in user's id. The realtime
+    // server matches passengers by userId (same account as the login).
+    const u = userRef.current || {};
+    const userId = u.id || u._id || null;
+    if (!userId) {
+      console.warn('Realtime: no logged-in userId; skipping driver matching.');
+      return;
     }
+    arrivedRef.current = false;   // reset per-trip guard
 
     const socket = connectSocket({
-      onDriverArrived: (data) => {
+      onDriverAccepted: (data) => {
+        // Driver pressed "Nhận cuốc": confirm a driver is on the way + ETA (from
+        // the route). PIN is NOT shown yet (only on arrival).
+        const name = data.driverName || data.driver?.name || 'của bạn';
+        const plate = data.licensePlate || data.driver?.plate || '';
         dispatch({ type: 'SET_STATE', payload: 'trip_live' });
-        dispatch({ type: 'SET_PIN', payload: data.pin || '1234' });
-        dispatch({ type: 'SET_DRIVER', payload: data.driver || booked.driver });
-        const pinStr = (data.pin || '1234').split('').join(' ');
-        speak(`Tài xế đã đến. Mã PIN của bạn là ${pinStr}`);
+        dispatch({ type: 'SET_DRIVER', payload: { name, plate } });
+        dispatch({ type: 'SET_PIN', payload: null });
+        if (navigator.vibrate) navigator.vibrate(150);
+        const eta = booked?.etaMin || booked?.durationMin;
+        const plateStr = plate.replace(/[^0-9A-Za-zĐđ]/g, '').split('').join(' ');
+        speak(`Đã có tài xế nhận chuyến. Tài xế ${name}, biển số ${plateStr}.`
+              + (eta ? ` Dự kiến đến điểm đón trong khoảng ${eta} phút.` : ''));
+      },
+      onDriverArrived: (data) => {
+        if (arrivedRef.current) return;   // already announced PIN for this trip
+        arrivedRef.current = true;
+        const pin = String(data.pin || '');
+        const name = data.driverName || data.driver?.name || 'của bạn';
+        const plate = data.licensePlate || data.driver?.plate || '';
+        dispatch({ type: 'SET_STATE', payload: 'trip_live' });
+        dispatch({ type: 'SET_PIN', payload: pin });
+        dispatch({ type: 'SET_DRIVER', payload: { name, plate } });
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        const pinStr = pin.split('').join(' ');
+        const plateStr = plate.replace(/[^0-9A-Za-zĐđ]/g, '').split('').join(' ');
+        // Read the PIN TWICE on purpose (accessibility: visually-impaired riders
+        // need to hear it clearly). The driver must still enter it correctly.
+        speak(`Tài xế đã đến nơi đón. Tài xế ${name}, biển số ${plateStr}.`)
+          .then(() => pin && speak(`Mã PIN của bạn là ${pinStr}.`))
+          .then(() => pin && speak(`Nhắc lại, mã PIN của bạn là ${pinStr}. Vui lòng đọc mã này cho tài xế để xác nhận.`));
       },
       onPinVerified: () => {
-        speak('Đã xác minh. Chúc bạn có chuyến đi an toàn!');
-        setTimeout(() => dispatch({ type: 'RESET_TRIP' }), 3000);
+        dispatch({ type: 'SET_STATE', payload: 'in_progress' });   // -> RideMoving
+        speak('Tài xế đã xác nhận đúng mã. Bạn đã lên xe an toàn. Xe đang khởi hành, chúc bạn đi đường bình an!');
+      },
+      onTripCompleted: () => {
+        dispatch({ type: 'SET_STATE', payload: 'completed' });      // -> RideArrived
+        speak('Đã tới nơi, chuyến đi hoàn tất. Bạn có thể đánh giá mức độ tiếp cận của điểm đến để giúp cộng đồng.');
       },
     });
     socketRef.current = socket;
-    emitPassengerWaiting({ booking: booked });
+    // Tell the driver this is an accessibility ride (so they can assist).
+    const DISAB = {
+      visual_impairment: 'khiếm thị', wheelchair: 'dùng xe lăn',
+      hearing_impairment: 'khiếm thính', elderly: 'người cao tuổi',
+      temporary_injury: 'chấn thương tạm thời',
+    };
+    const dtype = userRef.current?.accessibility_profile?.disability_type;
+    const accessibility = dtype
+      ? `Hành khách ${DISAB[dtype] || 'cần hỗ trợ đặc biệt'} — vui lòng hỗ trợ lên/xuống xe`
+      : '';
+    const name = userRef.current?.full_name || 'Hành khách';
+    emitPassengerWaiting({ userId, accessibility, name });   // server matches by userId
   }, [dispatch]);
 
-  // Reset trip
-  const resetTrip = useCallback(() => {
-    disconnectSocket();
-    dispatch({ type: 'RESET_TRIP' });
+  // ---- On mount: greet, then AUTO-OPEN the mic (no button needed) ----
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      let online = false;
+      try { online = (await api.checkHealth())?.status === 'ok'; } catch { online = false; }
+      if (cancelled) return;
+      dispatch({ type: 'SET_BACKEND_ONLINE', payload: online });
+      const greet = 'Xin chào, tôi là trợ lý đặt xe, bạn muốn đến đâu?';
+      dispatch({ type: 'SET_STATUS', payload: { main: 'Xin chào! Bạn muốn đến đâu?', sub: 'Hãy nói điểm đến của bạn' } });
+      _streamText(greet);
+      await speak(greet);
+      if (cancelled) return;
+      // The login click was the user gesture; start listening right after.
+      startListeningRef.current();
+    })();
+    return () => { cancelled = true; };
   }, [dispatch]);
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      disconnectSocket();
-      stopSpeech();
-    };
+    return () => { disconnectSocket(); stopSpeech(); };
   }, []);
 
   return {
     state,
     startListening,
     stopListening,
-    resetTrip,
+    toggleListening,
+    resetTrip: useCallback(() => { disconnectSocket(); dispatch({ type: 'RESET_TRIP' }); }, [dispatch]),
   };
 }

@@ -1,0 +1,64 @@
+/* AgentStage — streaming AI agent panel (big by default, compact when map shows) */
+.agent-stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 22px 22px 10px;
+  gap: 12px;
+}
+
+.agent-stage-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.agent-orb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #6fe3a0, var(--color-accent-green));
+  box-shadow: 0 0 14px rgba(0, 200, 83, .6);
+}
+.agent-orb.thinking { animation: orb-pulse .9s ease-in-out infinite; }
+@keyframes orb-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: .6; } }
+.agent-stage-title { font-weight: 800; color: var(--color-accent-green); letter-spacing: .3px; }
+.agent-rec { margin-left: auto; color: var(--color-accent-red); font-size: .8rem; font-weight: 700; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+
+.agent-stage-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;          /* center the text when big */
+  justify-content: center;
+  text-align: center;
+}
+.agent-stage-text {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-size: clamp(1.5rem, 5vw, 2.4rem);
+  line-height: 1.32;
+  white-space: pre-wrap;
+}
+.caret {
+  display: inline-block;
+  width: .6ch; height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--color-accent-green);
+  animation: blink 1s steps(1) infinite;
+}
+.agent-stage-transcript {
+  flex: 0 0 auto;
+  color: var(--color-accent-blue);
+  font-style: italic;
+  text-align: center;
+  font-size: clamp(.95rem, 3vw, 1.15rem);
+}
+
+/* Compact: smaller text, left-aligned, scrolls — still streams for judges. */
+.agent-stage.compact { padding: 12px 16px 6px; gap: 6px; }
+.agent-stage.compact .agent-stage-body { align-items: flex-start; justify-content: flex-start; text-align: left; }
+.agent-stage.compact .agent-stage-text { font-size: clamp(1rem, 3.4vw, 1.25rem); line-height: 1.4; text-align: left; }
+.agent-stage.compact .agent-stage-transcript { text-align: left; }

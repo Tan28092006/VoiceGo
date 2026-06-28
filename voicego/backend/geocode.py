@@ -20,9 +20,34 @@ import math
 import requests
 
 from voice import GEMINI_API_KEY, GEMINI_MODEL, groq_json
-from places_db import lookup as _local_lookup
+from places_db import lookup as _local_lookup, _fold as _fold_text
+
+# Distinctive names of OTHER cities/provinces. If the user names one, we don't
+# serve it (HCMC only) — reject before geocoding warps it onto a random HCMC place.
+_OTHER_CITY = (
+    "ha noi", "da nang", "hai phong", "nha trang", "can tho", "da lat", "vung tau",
+    "phu quoc", "ha long", "noi bai", "sa pa", "quy nhon", "hoi an", "bien hoa",
+    "buon ma thuot", "pleiku", "thanh hoa", "nghe an", "ha tinh", "quang ninh",
+)
+
+
+def _names_other_city(text):
+    fq = _fold_text(text)
+    return any(re.search(rf"\b{c}\b", fq) for c in _OTHER_CITY)
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+
+# Greater Hồ Chí Minh City bounding box (lat_min, lat_max, lng_min, lng_max).
+# Used to (a) bias/limit Nominatim and (b) reject results outside the city
+# (e.g. "Đại học Quốc gia Hà Nội" must NOT resolve).
+HCMC_BOUNDS = (10.35, 11.25, 106.30, 107.05)
+# Nominatim viewbox is "lon1,lat1,lon2,lat2"
+HCMC_VIEWBOX = f"{HCMC_BOUNDS[2]},{HCMC_BOUNDS[1]},{HCMC_BOUNDS[3]},{HCMC_BOUNDS[0]}"
+
+
+def _in_hcmc(lat, lng):
+    return (HCMC_BOUNDS[0] <= lat <= HCMC_BOUNDS[1]
+            and HCMC_BOUNDS[2] <= lng <= HCMC_BOUNDS[3])
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):
@@ -79,7 +104,11 @@ def _nominatim_full(address):
     try:
         r = requests.get(
             NOMINATIM_URL,
-            params={"q": address, "format": "json", "limit": 1, "countrycodes": "vn"},
+            # viewbox BIASES toward HCMC but does NOT force (no bounded=1, which
+            # would warp an out-of-town query like "ĐHQG Hà Nội" onto a random
+            # in-box place). Out-of-HCMC hits are rejected by _in_hcmc afterwards.
+            params={"q": address, "format": "json", "limit": 1, "countrycodes": "vn",
+                    "viewbox": HCMC_VIEWBOX},
             headers={"User-Agent": "VoiceGo/1.0 (hackathon accessibility demo)"},
             timeout=10,
         )
@@ -97,6 +126,53 @@ def _nominatim_full(address):
 def _nominatim(address):
     r = _nominatim_full(address)
     return (r[0], r[1]) if r else None
+
+
+def _clean_display(disp):
+    disp = (disp or "").replace(", Việt Nam", "").strip()
+    return re.sub(r",?\s*\d{5,6}\b", "", disp)
+
+
+def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
+    """Multiple DISTINCT real HCMC matches for an ambiguous query (e.g. a street
+    name / house number that exists in several districts: '19 Ngô Gia Tự').
+    Real OpenStreetMap results only (no hallucination), HCMC-only, one per area."""
+    if _names_other_city(text):
+        return []
+    try:
+        r = requests.get(
+            NOMINATIM_URL,
+            params={"q": f"{text}, Thành phố Hồ Chí Minh", "format": "json",
+                    "limit": limit, "countrycodes": "vn", "viewbox": HCMC_VIEWBOX,
+                    "addressdetails": 1},
+            headers={"User-Agent": "VoiceGo/1.0 (hackathon accessibility demo)"},
+            timeout=10,
+        )
+        arr = r.json()
+    except Exception:  # noqa: BLE001
+        return []
+    out, seen = [], set()
+    for it in arr if isinstance(arr, list) else []:
+        try:
+            lat, lng = float(it["lat"]), float(it["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not _in_hcmc(lat, lng):
+            continue
+        ad = it.get("address", {}) or {}
+        area = (ad.get("suburb") or ad.get("city_district") or ad.get("quarter")
+                or ad.get("county") or ad.get("town") or ad.get("city") or "")
+        key = area or f"{round(lat, 3)},{round(lng, 3)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        disp = _clean_display(it.get("display_name", ""))
+        dist = round(_haversine_km(user_lat, user_lng, lat, lng), 1) if user_lat is not None else None
+        out.append({"name": disp.split(",")[0].strip() or text, "address": disp,
+                    "lat": lat, "lng": lng, "area": area, "distanceKm": dist})
+        if len(out) >= 4:
+            break
+    return out
 
 
 def _build_prompt(text, user_lat, user_lng, grounded):
@@ -125,6 +201,10 @@ def resolve_destination(text, user_lat=None, user_lng=None):
     if not text.strip():
         return {"ok": False, "reason": "empty"}
 
+    # Only HCMC: if the user explicitly names another city, stop here.
+    if _names_other_city(text):
+        return {"ok": False, "reason": "out_of_area"}
+
     # 0) Local gazetteer FIRST: verified landmarks resolve instantly with trusted
     #    coords — no network call, no rate-limit, and it fixes places public
     #    geocoders get wrong (Landmark 81, Nhà thờ Đức Bà, Bách Khoa, ...).
@@ -150,6 +230,8 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         if not coords:
             return {"ok": False, "reason": "not_found"}
         lat, lng = coords
+        if not _in_hcmc(lat, lng):
+            return {"ok": False, "reason": "out_of_area"}  # only serve HCMC
         dist = round(_haversine_km(user_lat, user_lng, lat, lng), 1) if user_lat is not None else None
         return {"ok": True, "name": text, "address": text, "province": "", "lat": lat, "lng": lng,
                 "distanceKm": dist, "confidence": 0.4, "source": "nominatim_raw", "alternatives": []}
@@ -172,6 +254,7 @@ def resolve_destination(text, user_lat=None, user_lng=None):
                 coords = (hit[0], hit[1])
                 if hit[2]:
                     address = hit[2]  # use Nominatim's REAL address (matches coords)
+                    name = hit[2].split(",")[0].strip() or name  # keep name == coords
                 break
     # Only trust model coords from GROUNDED search (real). NEVER use plain-Groq
     # coords — they are hallucinated (audit showed 10-21km errors). If Nominatim
@@ -183,6 +266,8 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         return {"ok": False, "reason": "not_found", "name": name, "address": address}
 
     lat, lng = coords
+    if not _in_hcmc(lat, lng):   # reject anything outside HCMC (e.g. ĐHQG Hà Nội)
+        return {"ok": False, "reason": "out_of_area", "name": name, "address": address}
     confidence = float(g.get("confidence", 0.6))
     if source == "nominatim" and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
         if _haversine_km(lat, lng, float(g_lat), float(g_lng)) > 8:

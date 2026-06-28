@@ -59,10 +59,38 @@ PLACES = [
      "lat": 10.77973, "lng": 106.69910, "aliases": ["nha tho duc ba", "duc ba", "nha tho chinh toa duc ba"]},
     {"name": "Sân vận động Thống Nhất", "address": "Sân vận động Thống Nhất, 138 Đào Duy Từ, Quận 10",
      "lat": 10.77258, "lng": 106.66724, "aliases": ["san van dong thong nhat", "svd thong nhat", "san van dong"]},
-    {"name": "Đại học Bách Khoa (cơ sở Lý Thường Kiệt)",
-     "address": "Đại học Bách Khoa, 268 Lý Thường Kiệt, Quận 10",
+    {"name": "Đại học Bách Khoa (cơ sở 1 - Quận 10)",
+     "address": "Đại học Bách Khoa, 268 Lý Thường Kiệt, Phường 14, Quận 10",
      "lat": 10.77230, "lng": 106.65770,
-     "aliases": ["bach khoa", "dai hoc bach khoa", "dhbk", "bach khoa ly thuong kiet", "truong bach khoa"]},
+     "aliases": ["bach khoa", "dai hoc bach khoa", "dhbk", "bach khoa ly thuong kiet",
+                 "truong bach khoa", "bach khoa quan 10", "bach khoa co so 1"]},
+    {"name": "Đại học Bách Khoa (cơ sở 2 - Dĩ An)",
+     "address": "Đại học Bách Khoa cơ sở 2, Khu ĐHQG, Dĩ An, Bình Dương",
+     "lat": 10.88030, "lng": 106.80500,
+     "aliases": ["bach khoa", "dai hoc bach khoa", "dhbk", "bach khoa di an",
+                 "bach khoa co so 2", "bach khoa thu duc"]},
+    {"name": "Đại học Công nghệ Thông tin (UIT)",
+     "address": "Đại học Công nghệ Thông tin, Khu phố 6, Linh Trung, TP. Thủ Đức",
+     "lat": 10.87004, "lng": 106.80299,
+     "aliases": ["dai hoc cong nghe thong tin", "cong nghe thong tin", "dai hoc cntt", "dhcntt", "cntt", "uit", "truong cong nghe thong tin"]},
+    {"name": "Đại học Quốc tế (IU)",
+     "address": "Đại học Quốc tế - ĐHQG, Khu phố 6, Linh Trung, TP. Thủ Đức",
+     "lat": 10.87820, "lng": 106.80120,
+     "aliases": ["dai hoc quoc te", "truong quoc te", "iu", "dhqt", "dai hoc quoc te dhqg"]},
+    {"name": "Đại học Khoa học Tự nhiên (Quận 5)",
+     "address": "Đại học Khoa học Tự nhiên, 227 Nguyễn Văn Cừ, Phường 4, Quận 5",
+     "lat": 10.76265, "lng": 106.68220,
+     "aliases": ["dai hoc khoa hoc tu nhien", "khoa hoc tu nhien", "dhkhtn", "khtn",
+                 "tu nhien nguyen van cu", "khoa hoc tu nhien quan 5", "khtn quan 5"]},
+    {"name": "Đại học Khoa học Tự nhiên (cơ sở Thủ Đức)",
+     "address": "Đại học Khoa học Tự nhiên cơ sở 2, Khu phố 6, Linh Trung, TP. Thủ Đức",
+     "lat": 10.87490, "lng": 106.80050,
+     "aliases": ["khoa hoc tu nhien", "dai hoc khoa hoc tu nhien", "dhkhtn", "khtn",
+                 "khoa hoc tu nhien thu duc", "khtn thu duc", "tu nhien thu duc", "tu nhien linh trung"]},
+    {"name": "Đại học Sư phạm Kỹ thuật TP.HCM",
+     "address": "Đại học Sư phạm Kỹ thuật, 1 Võ Văn Ngân, TP. Thủ Đức",
+     "lat": 10.85072, "lng": 106.77179,
+     "aliases": ["su pham ky thuat", "dai hoc su pham ky thuat", "spkt", "ute"]},
 
     # ---- TIER B: sai < 600 m (vẫn tốt; chốt cứng để khỏi phụ thuộc geocoder) ----
     {"name": "Công viên Đầm Sen", "address": "Công viên Văn hóa Đầm Sen, 3 Hòa Bình, Quận 11",
@@ -136,37 +164,111 @@ def _strip_filler(q):
     return re.sub(r"\s+", " ", q).strip()
 
 
-def lookup(text):
-    """Khớp text với gazetteer. Trả dict {name,address,lat,lng} hoặc None.
+_AREA_NAMES = [
+    "thu duc", "binh thanh", "go vap", "tan binh", "tan phu", "phu nhuan",
+    "binh tan", "nha be", "hoc mon", "cu chi", "binh chanh", "can gio", "di an",
+]
 
-    Khớp theo TOKEN (không theo chuỗi con) để chịu được trật tự/từ thừa:
-    một bộ key phải được CHỨA TRỌN trong câu nói (hoặc ngược lại), và tổng độ dài
-    các token khớp >= 5 ký tự để tránh khớp lung tung ('chợ', 'bệnh viện'...).
-    """
+
+def _areas_in(folded):
+    """Quận/khu vực xuất hiện trong chuỗi (đã fold). 'quan 5'/'q5' -> 'q5'."""
+    found = set()
+    for m in re.finditer(r"\bquan\s*0*(\d{1,2})\b", folded):
+        found.add("q" + m.group(1))
+    for m in re.finditer(r"\bq\s*0*(\d{1,2})\b", folded):
+        found.add("q" + m.group(1))
+    for name in _AREA_NAMES:
+        if re.search(rf"\b{name}\b", folded):
+            found.add(name)
+    return found
+
+
+# Tokens that are location qualifiers (quận/tỉnh/thành), not distinguishing place
+# words — ignored when checking for "leftover" significant tokens.
+_QUALIFIER = set("quan q tp tphcm hcm sai gon ho chi minh tinh thanh pho phuong p".split())
+for _n in _AREA_NAMES:
+    _QUALIFIER.update(_n.split())
+
+
+def _is_qualifier(t):
+    return t in _QUALIFIER or (t.isdigit() and len(t) <= 2)
+
+
+def _match_entry(tokenized, qt, folded, entry):
+    """Điểm khớp tốt nhất của 1 entry với qt, sau khi qua guard độ chính xác +
+    quận/khu vực. Trả tuple điểm (n, sig) hoặc None."""
+    best_kt, best_score = None, (0, 0)
+    for kt in tokenized:
+        inter = kt & qt
+        if not inter:
+            continue
+        if not (inter - _GENERIC):           # chỉ trùng token chung chung -> bỏ
+            continue
+        contained = kt <= qt or qt <= kt
+        if not contained and len(inter) / len(kt) < 0.75:
+            continue
+        sig = sum(len(t) for t in inter)
+        if sig < 4:
+            continue
+        score = (len(inter), sig)
+        if score > best_score:
+            best_kt, best_score = kt, score
+    if best_kt is None:
+        return None
+    # Precision: câu còn TỪ ĐẶC TRƯNG thừa (>=3 ký tự, không phải qualifier) mà
+    # alias không có -> có thể là nơi KHÁC ('quốc gia HÀ NỘI', 'sân bay NỘI BÀI').
+    leftover = {t for t in (qt - best_kt - _GENERIC) if len(t) >= 3 and not _is_qualifier(t)}
+    if leftover:
+        return None
+    # District: câu nêu quận/khu vực mà địa chỉ entry khác quận -> bỏ.
+    said = _areas_in(folded)
+    if said:
+        addr_areas = _areas_in(_fold(entry["address"]))
+        if addr_areas and not (said & addr_areas):
+            return None
+    return best_score
+
+
+def _prep(text):
+    folded = _fold(text)
+    q = _strip_filler(folded)
+    return folded, (set(q.split(" ")) if q else set())
+
+
+def _as_place(p):
+    return {"name": p["name"], "address": p["address"], "lat": p["lat"], "lng": p["lng"]}
+
+
+def lookup(text):
+    """Khớp text với gazetteer -> 1 địa điểm tốt nhất (dict) hoặc None."""
     if not text or not text.strip():
         return None
-    q = _strip_filler(_fold(text))
-    qt = set(q.split(" ")) if q else set()
+    folded, qt = _prep(text)
     if not qt:
         return None
-
     best, best_score = None, (0, 0)
     for p, tokenized in _INDEX:
-        for kt in tokenized:
-            inter = kt & qt
-            if not inter:
-                continue
-            if not (inter - _GENERIC):       # chỉ trùng token chung chung -> bỏ
-                continue
-            contained = kt <= qt or qt <= kt
-            if not contained and len(inter) / len(kt) < 0.75:
-                continue
-            sig = sum(len(t) for t in inter)
-            if sig < 5:                      # bỏ các khớp quá ngắn/chung chung
-                continue
-            score = (len(inter), sig)        # nhiều token trùng hơn -> ưu tiên; rồi dài hơn
-            if score > best_score:
-                best, best_score = p, score
-    if best is None:
-        return None
-    return {"name": best["name"], "address": best["address"], "lat": best["lat"], "lng": best["lng"]}
+        s = _match_entry(tokenized, qt, folded, p)
+        if s and s > best_score:
+            best, best_score = p, s
+    return _as_place(best) if best else None
+
+
+def lookup_all(text):
+    """TẤT CẢ địa điểm đã xác minh khớp text (cho nơi NHIỀU cơ sở: Bách Khoa, KHTN…),
+    xếp theo độ khớp giảm dần, đã khử trùng toạ độ. KHÔNG bịa — chỉ trả entry thật."""
+    if not text or not text.strip():
+        return []
+    folded, qt = _prep(text)
+    if not qt:
+        return []
+    scored = [(s, p) for p, tokenized in _INDEX
+              if (s := _match_entry(tokenized, qt, folded, p))]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    out, seen = [], []
+    for _, p in scored:
+        if any(abs(p["lat"] - u[0]) < 1e-3 and abs(p["lng"] - u[1]) < 1e-3 for u in seen):
+            continue
+        seen.append((p["lat"], p["lng"]))
+        out.append(_as_place(p))
+    return out

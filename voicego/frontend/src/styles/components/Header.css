@@ -16,7 +16,23 @@
   font-size: 1rem;
   font-weight: 700;
   color: var(--color-accent-green);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.voice-back {
+  border: none;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.voice-back:active { transform: scale(0.94); }
 
 .voice-meta {
   display: flex;

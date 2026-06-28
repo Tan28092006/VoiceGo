@@ -1,0 +1,45 @@
+/* TripInfo — floating card over the map (route + price) */
+.trip-info {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 500;
+  background: rgba(12, 15, 22, 0.92);
+  border: 1px solid var(--color-surface);
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(6px);
+  animation: ti-rise .35s ease;
+}
+@keyframes ti-rise { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.trip-info-route { display: flex; flex-direction: column; gap: 6px; }
+.ti-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ti-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+.ti-dot.red { background: var(--color-accent-red); }
+.ti-dot.green { background: var(--color-accent-green); }
+.ti-text {
+  color: var(--color-text-secondary);
+  font-size: .95rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ti-text.strong { color: var(--color-text-primary); font-weight: 700; font-size: 1.05rem; }
+.ti-access {
+  margin-top: 10px; padding: 8px 12px; border-radius: 12px;
+  background: rgba(0, 200, 83, .14); border: 1px solid rgba(0, 200, 83, .35);
+  color: var(--color-accent-green); font-weight: 700; font-size: .9rem;
+}
+
+.trip-info-quote {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-surface);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ti-price { color: var(--color-accent-green); font-size: 1.5rem; font-weight: 900; }
+.ti-meta { color: var(--color-text-secondary); font-size: .9rem; font-weight: 600; text-align: right; }

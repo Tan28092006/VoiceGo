@@ -14,10 +14,12 @@ Tools are the only source of real data (coords/distance/price), never invented.
 """
 import json
 import re
+import time
 import unicodedata
 
 from voice import groq_client, GROQ_MODEL
-from geocode import resolve_destination, _nominatim, _haversine_km
+from geocode import resolve_destination, geocode_candidates, _nominatim, _haversine_km
+from places_db import lookup_all as _lookup_all
 from routing import road_route
 from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request
 
@@ -25,6 +27,39 @@ MAX_ALT_KM = 80  # drop same-name places too far away (e.g. another province)
 
 ORIGIN = {"name": "Trường Đại học Quốc tế", "lat": 10.8782, "lng": 106.8012}
 PRICE = {"bike": {"base": 12000, "perKm": 4000}, "car": {"base": 29000, "perKm": 12000}}
+
+# Feature 2 — Accessible entrances (HARDCODED). When a destination is one of these
+# multi-gate places, offer a more accessible gate. The frontend colours the
+# accessible point green so judges see accessibility-aware routing.
+ACCESSIBLE_GATES = [
+    {
+        "near": (10.77230, 106.65770), "radius_km": 0.9,
+        "label": "Đại học Bách Khoa (cơ sở 1, Quận 10)",
+        "gates": [
+            {"name": "ĐH Bách Khoa — Cổng 1 (dễ tiếp cận)",
+             "address": "Cổng 1, ĐH Bách Khoa, 268 Lý Thường Kiệt, Quận 10",
+             "lat": 10.772085, "lng": 106.657829, "accessible": True},
+            {"name": "ĐH Bách Khoa — Cổng 3",
+             "address": "Cổng 3, ĐH Bách Khoa, Quận 10",
+             "lat": 10.773855, "lng": 106.661507, "accessible": False},
+        ],
+    },
+]
+
+
+def _gates_for(lat, lng):
+    """Return the accessible-gate config for a destination, or None."""
+    for g in ACCESSIBLE_GATES:
+        if _haversine_km(lat, lng, g["near"][0], g["near"][1]) <= g["radius_km"]:
+            return g
+    return None
+
+
+def _gate_candidates(g):
+    return {"ok": True, "kind": "candidates", "candidates": g["gates"], "accessibility_choice": True,
+            "next": (f"Đây là {g['label']}. Có CỔNG dễ tiếp cận hơn cho người khiếm thị là Cổng 1 "
+                     "(đường đi an toàn, có chỗ đón rõ ràng). HỎI: 'Bạn muốn đến Cổng 1 — dễ tiếp cận, "
+                     "hay Cổng 3?'. KHUYẾN NGHỊ Cổng 1. Khi người dùng chọn -> select_candidate(index).")}
 
 SYSTEM_PROMPT = (
     "Bạn là VoiceGo — trợ lý ĐẶT XE bằng giọng nói cho người KHIẾM THỊ ở TP.HCM. "
@@ -36,7 +71,7 @@ SYSTEM_PROMPT = (
     "Nếu chỉ 1 (kind=place) → đó là điểm đến. "
     "Nếu người dùng từ chối / muốn chỗ khác → GỌI LẠI resolve_destination với địa điểm mới. "
     "LẶP đến khi chốt đúng MỘT điểm. Ở bước này TUYỆT ĐỐI KHÔNG nói khoảng cách hay giá.\n"
-    "2) Sau khi người dùng đã xác nhận đúng điểm → HỎI 'Bạn muốn đi xe ôm điện hay ô tô điện?'. "
+    "2) Sau khi người dùng đã xác nhận đúng điểm → HỎI 'Bạn muốn đi xe máy hay ô tô?'. "
     "Sau khi người dùng chọn loại xe → GỌI get_quote(vehicle) với loại xe đó. "
     "Rồi ĐỌC LẠI: tên + địa chỉ + khoảng cách + giá, và HỎI 'Bạn xác nhận đặt xe chứ?'.\n"
     "2b) Nếu người dùng muốn ĐỔI LOẠI XE (kể cả sau khi đã nghe giá vì thấy đắt) → GỌI LẠI "
@@ -47,9 +82,30 @@ SYSTEM_PROMPT = (
     "BẤT CỨ KHI NÀO người dùng nói huỷ / thôi / dừng / không đặt nữa / không đi nữa → "
     "GỌI end_conversation rồi nói MỘT câu tạm biệt ngắn. KHÔNG hỏi gì thêm.\n"
     "Quy tắc: tiếng Việt, mỗi lượt 1–2 câu, rõ ràng, ấm áp. Chỉ dùng số liệu từ tool, KHÔNG bịa. "
-    "Mặc định xe ôm (bike); đổi sang car nếu người dùng yêu cầu. "
+    "Loại xe chỉ có 'xe máy' (bike) và 'ô tô' (car) — KHÔNG nói 'điện'. "
+    "KHÔNG có loại xe mặc định. Khi HỎI loại xe mà người dùng trả lời MƠ HỒ / KHÔNG CHẮC "
+    "('đoán đi', 'sao cũng được', 'tùy', 'gì cũng được', 'không biết', 'không rõ', 'gì cũng đặng') HOẶC bạn nghe không rõ "
+    "→ phải HỎI LẠI ĐÚNG câu đang thiếu: 'Bạn muốn đi xe máy hay ô tô?'; TUYỆT ĐỐI không tự chọn thay người dùng, "
+    "KHÔNG gọi get_quote khi chưa rõ loại xe, và KHÔNG bịa/đoán điểm đến từ câu mơ hồ. "
+    "Nếu KHÔNG CHẮC về điểm đến hoặc nghe không rõ điểm đến → hỏi lại cho rõ, đừng đoán. "
     "Khi cần dùng tool, hãy gọi qua cơ chế tool-calling; TUYỆT ĐỐI không viết tên hàm hay JSON vào câu trả lời."
 )
+
+
+def _say_money(text):
+    """Đọc tiền VND dạng 'X nghìn'/'X triệu' (tránh '107000' -> '107 không không không')."""
+    def repl(m):
+        n = int(re.sub(r"[.,\s]", "", m.group(1)))
+        if n < 1000 or n % 1000 != 0:
+            return m.group(0)
+        tr, ng = n // 1_000_000, (n % 1_000_000) // 1000
+        if tr and ng:
+            return f"{tr} triệu {ng} nghìn"
+        if tr:
+            return f"{tr} triệu"
+        return f"{n // 1000} nghìn"
+    # số có dấu phân nhóm (107.000 / 107 000) hoặc >=4 chữ số liền
+    return re.sub(r"(\d{1,3}(?:[.,\s]\d{3})+|\d{4,})", repl, text)
 
 
 def _clean_reply(text):
@@ -62,7 +118,15 @@ def _clean_reply(text):
             text = text[:i]
     text = text.replace("**", "").replace("__", "").replace("`", "")
     text = re.sub(r"(?m)^\s*#+\s*", "", text)   # markdown headers
-    return text.strip()
+    text = _say_money(text)                      # 107000 -> "107 nghìn" (TTS đọc đúng)
+    text = text.strip()
+    # Collapse consecutive duplicate sentences (gpt-oss đôi khi lặp y nguyên 1 câu).
+    parts = [p for p in re.split(r"(?<=[.?!…])\s+", text) if p.strip()]
+    out = []
+    for s in parts:
+        if not out or s.strip().lower() != out[-1].strip().lower():
+            out.append(s)
+    return (" ".join(out).strip() or text)
 
 TOOLS = [
     {"type": "function", "function": {
@@ -116,8 +180,9 @@ def _norm(s):
 
 
 def _picked_vehicle(msgs):
-    """Did the user explicitly choose a vehicle in the last few user turns?
-    Returns 'car' | 'bike' | None. Gates get_quote so the agent must ASK first."""
+    """Did the user choose a vehicle in the last few user turns?
+    Returns 'car' | 'bike' | None. Gates get_quote so the agent ASKS first.
+    A vague reply ('đoán đi', 'tùy', 'sao cũng được') counts as the default (bike)."""
     n = 0
     for m in reversed(msgs):
         if m.get("role") != "user":
@@ -156,34 +221,50 @@ def _geocode_text(text):
     return _nominatim(text) or _nominatim((text or "").split(":")[-1].strip())
 
 
+_NEXT_CANDIDATES = (
+    "Đọc danh sách candidates theo SỐ THỨ TỰ (1, 2, ...) kèm KHU VỰC/QUẬN để phân biệt, "
+    "hỏi người dùng chọn số mấy (hoặc nói tên/khu vực). Khi người dùng chọn rõ -> gọi select_candidate(index). "
+    "Nếu người dùng trả lời KHÔNG rõ chọn mục nào (vd 'hai cơ sở', 'cái nào', 'không biết') -> ĐỌC LẠI danh sách "
+    "và hỏi lại; TUYỆT ĐỐI KHÔNG gọi resolve_destination với câu mơ hồ đó."
+)
+
+
 def _do_resolve(query):
+    """Resolve a spoken place. If it's ambiguous (a place with several branches,
+    or a street that exists in many districts) -> return a LIST of REAL candidates
+    to pick from. GENERAL: the geocoder finds branches of ANY place (no per-place
+    aliases needed); the verified gazetteer just adds accuracy + branches the
+    geocoder misses. No hallucinated addresses — every candidate is a real coord."""
+    ga = _lookup_all(query)                                   # verified (accurate)
+    geo = geocode_candidates(query, ORIGIN["lat"], ORIGIN["lng"]) if len(ga) < 2 else []
+
+    # Merge: gazetteer first (verified), then OSM results not near an existing pick.
+    merged = [{"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]} for c in ga]
+    for c in geo:
+        if not any(_haversine_km(c["lat"], c["lng"], m["lat"], m["lng"]) < 1.2 for m in merged):
+            merged.append({"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]})
+    merged = merged[:4]
+
+    if len(merged) >= 2:
+        return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
+
+    # Single / none -> the accurate single resolver (gazetteer single, grounded, Nominatim).
     r = resolve_destination(query, ORIGIN["lat"], ORIGIN["lng"])
     if not r.get("ok"):
-        return {"ok": False, "kind": "place", "reason": r.get("reason", "not_found")}
+        reason = r.get("reason", "not_found")
+        out = {"ok": False, "kind": "place", "reason": reason}
+        if reason == "out_of_area":
+            out["message"] = ("Địa điểm này nằm ngoài Thành phố Hồ Chí Minh. "
+                              "Hiện mình chỉ hỗ trợ đặt xe trong khu vực TP.HCM. "
+                              "Bạn cho mình một điểm đến trong thành phố nhé.")
+        return out
 
-    # Build a candidate LIST with real coords (primary + geocoded alternatives) so
-    # the user can pick a specific branch later (selection has actual memory).
-    candidates = [{"name": r["name"], "address": r.get("address"), "lat": r["lat"], "lng": r["lng"]}]
-    for alt in (r.get("alternatives") or [])[:3]:
-        c = _geocode_text(alt)
-        # Keep only alternatives within the city region (skip same-name far places).
-        if c and _haversine_km(ORIGIN["lat"], ORIGIN["lng"], c[0], c[1]) <= MAX_ALT_KM:
-            candidates.append({"name": _short_name(alt), "address": alt, "lat": c[0], "lng": c[1]})
-
-    # De-dupe candidates that resolve to (almost) the same spot.
-    uniq = []
-    for c in candidates:
-        if not any(abs(c["lat"] - u["lat"]) < 1e-3 and abs(c["lng"] - u["lng"]) < 1e-3 for u in uniq):
-            uniq.append(c)
-
-    if len(uniq) == 1:
-        p = uniq[0]
-        return {"ok": True, "kind": "place", "name": p["name"], "address": p.get("address"),
-                "lat": p["lat"], "lng": p["lng"],
-                "next": "Hỏi người dùng 'xe ôm điện hay ô tô điện' TRƯỚC khi get_quote."}
-    return {"ok": True, "kind": "candidates", "candidates": uniq,
-            "next": "Đọc danh sách candidates theo SỐ THỨ TỰ (1,2,...) và hỏi người dùng chọn số mấy, "
-                    "rồi gọi select_candidate(index)."}
+    g = _gates_for(r["lat"], r["lng"])     # multi-gate place -> offer accessible gate
+    if g:
+        return _gate_candidates(g)
+    return {"ok": True, "kind": "place", "name": r["name"], "address": r.get("address"),
+            "lat": r["lat"], "lng": r["lng"],
+            "next": "Hỏi người dùng 'xe máy hay ô tô' TRƯỚC khi get_quote."}
 
 
 def _do_select(msgs, index):
@@ -196,9 +277,14 @@ def _do_select(msgs, index):
     if i < 0 or i >= len(cs):
         return {"ok": False, "kind": "place", "reason": "bad_index"}
     p = cs[i]
+    # If the picked place has accessible gates AND isn't itself a gate -> offer gates.
+    if "accessible" not in p:
+        g = _gates_for(p["lat"], p["lng"])
+        if g:
+            return _gate_candidates(g)
     return {"ok": True, "kind": "place", "name": p["name"], "address": p.get("address"),
-            "lat": p["lat"], "lng": p["lng"],
-            "next": "Hỏi người dùng 'xe ôm điện hay ô tô điện' TRƯỚC khi get_quote."}
+            "lat": p["lat"], "lng": p["lng"], "accessible": p.get("accessible"),
+            "next": "Hỏi người dùng 'xe máy hay ô tô' TRƯỚC khi get_quote."}
 
 
 def _do_quote(msgs, vehicle):
@@ -209,7 +295,7 @@ def _do_quote(msgs, vehicle):
     picked = _picked_vehicle(msgs)
     if not picked:
         return {"ok": False, "kind": "quote", "reason": "need_vehicle",
-                "message": "Chưa chọn loại xe. Hãy HỎI người dùng muốn 'xe ôm điện hay ô tô điện' trước khi báo giá."}
+                "message": "Chưa chọn loại xe. Hãy HỎI người dùng muốn 'xe máy hay ô tô' trước khi báo giá."}
     vehicle = picked  # trust what the user actually said
     rt = road_route(ORIGIN["lat"], ORIGIN["lng"], place["lat"], place["lng"])
     km = rt["distanceKm"] if rt else None
@@ -272,6 +358,41 @@ def _do_book(msgs, vehicle):
         return {**fallback, "dbSaved": False, "dbReason": f"database_error: {exc}"}
 
 
+def _apply_place_ui(ui, res):
+    """Map a resolve/select tool result onto the UI (place pin or candidate list)."""
+    if not res.get("ok"):
+        return
+    if res.get("kind") == "place":
+        ui["destination"] = {"name": res["name"], "address": res.get("address"),
+                             "lat": res["lat"], "lng": res["lng"], "accessible": res.get("accessible")}
+        ui.pop("quote", None)
+        ui.pop("candidates", None)
+    elif res.get("kind") == "candidates":
+        ui["candidates"] = res.get("candidates")   # frontend shows them on the map
+        ui.pop("destination", None)
+        ui.pop("quote", None)
+
+
+def _chat_create(client, msgs):
+    """Call Groq; auto-retry on 429 rate limit (TPM resets within seconds)."""
+    last = None
+    for _ in range(4):
+        try:
+            return client.chat.completions.create(
+                model=GROQ_MODEL, messages=msgs, tools=TOOLS, tool_choice="auto", temperature=0.3,
+            )
+        except Exception as e:  # noqa: BLE001
+            last = e
+            msg = str(e)
+            if "rate_limit" in msg or "429" in msg or "RateLimit" in type(e).__name__:
+                mt = re.search(r"try again in ([\d.]+)\s*s", msg)
+                wait = min((float(mt.group(1)) + 0.4) if mt else 5.0, 12.0)
+                time.sleep(wait)
+                continue
+            raise
+    raise last
+
+
 def run_agent(messages: list[dict]) -> dict:
     """One agent turn. Returns {reply, messages, ui}."""
     client = groq_client()
@@ -283,10 +404,9 @@ def run_agent(messages: list[dict]) -> dict:
         msgs.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
 
     ui = {}
-    for _ in range(6):
-        resp = client.chat.completions.create(
-            model=GROQ_MODEL, messages=msgs, tools=TOOLS, tool_choice="auto", temperature=0.3,
-        )
+    try:
+      for _ in range(6):
+        resp = _chat_create(client, msgs)
         m = resp.choices[0].message
         msgs.append(m.model_dump(exclude_none=True))
         if not m.tool_calls:
@@ -303,16 +423,10 @@ def run_agent(messages: list[dict]) -> dict:
             name = tc.function.name
             if name == "resolve_destination":
                 res = _do_resolve(args.get("query", ""))
-                if res.get("ok") and res.get("kind") == "place":
-                    ui["destination"] = {"name": res["name"], "address": res.get("address"),
-                                         "lat": res["lat"], "lng": res["lng"]}
-                    ui.pop("quote", None)
+                _apply_place_ui(ui, res)
             elif name == "select_candidate":
                 res = _do_select(msgs, args.get("index"))
-                if res.get("ok"):
-                    ui["destination"] = {"name": res["name"], "address": res.get("address"),
-                                         "lat": res["lat"], "lng": res["lng"]}
-                    ui.pop("quote", None)
+                _apply_place_ui(ui, res)
             elif name == "get_quote":
                 res = _do_quote(msgs, args.get("vehicle", "bike"))
                 if res.get("ok"):
@@ -334,4 +448,8 @@ def run_agent(messages: list[dict]) -> dict:
             msgs.append({"role": "tool", "tool_call_id": tc.id,
                          "content": json.dumps(payload, ensure_ascii=False)})
 
-    return {"reply": "Xin lỗi, mình chưa xử lý xong. Bạn thử lại giúp nhé.", "messages": msgs, "ui": ui}
+      return {"reply": "Xin lỗi, mình chưa xử lý xong. Bạn thử lại giúp nhé.", "messages": msgs, "ui": ui}
+    except Exception as exc:  # noqa: BLE001 — incl. persistent rate limit
+        print("run_agent error:", exc)
+        return {"reply": "Hệ thống đang hơi bận, bạn chờ vài giây rồi nói lại giúp mình nhé.",
+                "messages": messages, "ui": {}}

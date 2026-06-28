@@ -2,20 +2,24 @@ import { io } from 'socket.io-client';
 
 let socket = null;
 
-function getRealtimeUrl() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('realtime') || 'http://localhost:3001';
-}
-
 export function connectSocket(callbacks = {}) {
-  if (socket) return socket;
-  const url = getRealtimeUrl();
-  socket = io(url, { transports: ['websocket', 'polling'] });
-  
+  // Always start from a clean socket so listeners (driver-arrived, pin-verified…)
+  // are never registered twice — that caused the PIN to be read aloud twice.
+  if (socket) { try { socket.off(); socket.disconnect(); } catch (e) {} socket = null; }
+  // Default: SAME-ORIGIN -> goes through this server's /socket.io (Vite proxy in
+  // dev). On HTTPS that becomes wss with no mixed-content. Override with
+  // ?realtime=http://host:3001 only when the driver server is on another host.
+  const override = new URLSearchParams(window.location.search).get('realtime');
+  socket = override
+    ? io(override, { transports: ['websocket', 'polling'] })
+    : io({ transports: ['websocket', 'polling'] });
+
   socket.on('connect', () => callbacks.onConnect?.());
   socket.on('disconnect', () => callbacks.onDisconnect?.());
+  socket.on('driver-accepted', (data) => callbacks.onDriverAccepted?.(data));
   socket.on('driver-arrived', (data) => callbacks.onDriverArrived?.(data));
   socket.on('pin-verified', (data) => callbacks.onPinVerified?.(data));
+  socket.on('trip-completed', (data) => callbacks.onTripCompleted?.(data));
   
   return socket;
 }

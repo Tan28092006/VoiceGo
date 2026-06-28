@@ -5,10 +5,11 @@ export async function checkHealth() {
   return res.json();
 }
 
-export async function speechToText(audioBlob, filename = 'audio.wav') {
+export async function speechToText(audioBlob, filename = 'audio.wav', engine = '') {
   const form = new FormData();
   form.append('file', audioBlob, filename);
-  const res = await fetch(`${BACKEND_URL}/api/voice/stt`, { method: 'POST', body: form });
+  const qs = engine ? `?engine=${encodeURIComponent(engine)}` : '';
+  const res = await fetch(`${BACKEND_URL}/api/voice/stt${qs}`, { method: 'POST', body: form });
   const data = await res.json();
   return data.text;
 }

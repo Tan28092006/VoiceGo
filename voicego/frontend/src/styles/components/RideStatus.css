@@ -1,0 +1,128 @@
+/* RideStatus — Grab-style trip sheet (moving) + arrival overlay. Dark theme. */
+
+/* ---- Moving: bottom sheet over the existing map ---- */
+.ride-sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 600;
+  max-height: 78%;
+  overflow-y: auto;
+  background: var(--color-bg-secondary);
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+  border-top: 1px solid var(--color-surface);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, .45);
+  padding: 8px 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: sheet-up .42s cubic-bezier(.2, .7, .2, 1);
+  transition: transform .4s cubic-bezier(.2, .7, .2, 1);
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+/* Collapsed: slide down so only the grip (handle + eyebrow) peeks over the map. */
+.ride-sheet.collapsed { transform: translateY(calc(100% - 72px)); }
+
+.ride-grip {
+  width: 100%; border: none; background: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 4px 0 2px;
+}
+.ride-handle { width: 46px; height: 5px; border-radius: 999px; background: var(--color-surface); }
+.ride-eyebrow { margin: 0; color: var(--color-accent-green); font-weight: 800; font-size: .9rem; letter-spacing: .3px; }
+.ride-eyebrow.center { text-align: center; }
+.ride-title { margin: 0; font-size: clamp(1.2rem, 4.4vw, 1.5rem); color: var(--color-text-primary); }
+
+.ride-metrics {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  background: var(--color-bg-primary); border: 1px solid var(--color-surface);
+  border-radius: 16px; padding: 14px;
+}
+.ride-metrics div { display: flex; flex-direction: column; gap: 4px; text-align: center; }
+.ride-metrics span { color: var(--color-text-secondary); font-size: .78rem; }
+.ride-metrics strong { color: var(--color-text-primary); font-size: 1.1rem; }
+
+.ride-route { background: var(--color-bg-primary); border: 1px solid var(--color-surface); border-radius: 16px; padding: 14px 16px; }
+.rr { display: flex; align-items: center; gap: 12px; }
+.rr small { display: block; color: var(--color-text-secondary); font-size: .75rem; }
+.rr strong { color: var(--color-text-primary); font-size: 1rem; }
+.rr-dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+.rr-dot.red { background: var(--color-accent-red); }
+.rr-dot.green { background: var(--color-accent-green); }
+.rr-divider { height: 18px; margin-left: 5px; border-left: 2px dotted var(--color-surface); }
+
+.ride-driver {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--color-bg-primary); border: 1px solid var(--color-surface);
+  border-radius: 16px; padding: 12px 14px;
+}
+.rd-avatar {
+  width: 46px; height: 46px; border-radius: 50%; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-accent-green); color: #022; font-weight: 900; font-size: 1.2rem;
+}
+.rd-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rd-info strong { color: var(--color-text-primary); }
+.rd-info span { color: var(--color-text-secondary); font-size: .85rem; }
+.rd-icon {
+  width: 42px; height: 42px; border-radius: 50%; border: none; flex: 0 0 auto;
+  background: var(--color-surface); color: var(--color-accent-green); font-size: 1.2rem; cursor: pointer;
+}
+
+.ride-acc {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: rgba(0, 200, 83, .1); border: 1px solid rgba(0, 200, 83, .3);
+  border-radius: 14px; padding: 12px 14px;
+}
+.ride-acc span { font-size: 1.3rem; }
+.ride-acc p { margin: 0; color: var(--color-text-secondary); font-size: .9rem; line-height: 1.4; }
+
+/* ---- Arrived: full overlay ---- */
+.ride-arrived-overlay {
+  position: fixed; inset: 0; z-index: 1100;
+  background: var(--color-bg-primary);
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto;
+  animation: overlay-in .3s ease;
+}
+.ride-arrived-box {
+  width: min(560px, 100%);
+  min-height: 100%;
+  padding: 40px 22px 28px;
+  display: flex; flex-direction: column; gap: 16px; align-items: stretch;
+}
+.arrived-check {
+  width: 84px; height: 84px; border-radius: 50%; align-self: center;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-accent-green); color: #fff; font-size: 2.6rem; font-weight: 900;
+  animation: box-up .4s cubic-bezier(.2, .7, .2, 1);
+}
+.arrived-title { margin: 0; text-align: center; font-size: clamp(1.5rem, 6vw, 2rem); color: var(--color-text-primary); }
+.arrived-sub { margin: 0; text-align: center; color: var(--color-text-secondary); line-height: 1.5; }
+
+.rating-card { background: var(--color-bg-secondary); border: 1px solid var(--color-surface); border-radius: 18px; padding: 18px; }
+.rating-card h3 { margin: 4px 0 12px; color: var(--color-text-primary); font-size: 1.1rem; }
+.stars { display: flex; gap: 8px; justify-content: center; }
+.stars button {
+  border: none; background: none; cursor: pointer;
+  font-size: clamp(2.2rem, 9vw, 2.8rem); line-height: 1;
+  color: var(--color-surface); transition: transform .1s ease, color .15s ease;
+}
+.stars button.on { color: var(--color-accent-amber); }
+.stars button:active { transform: scale(1.2); }
+.acc-toggle {
+  margin-top: 14px; width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--color-bg-primary); border: 1px solid var(--color-surface);
+  border-radius: 12px; padding: 12px 14px; cursor: pointer; color: var(--color-text-secondary);
+}
+.acc-toggle strong.yes { color: var(--color-accent-green); }
+.acc-toggle strong.no { color: var(--color-accent-red); }
+.rating-thanks { margin: 10px 0 0; color: var(--color-accent-green); font-weight: 700; text-align: center; }
+
+.ride-primary {
+  margin-top: 8px; width: 100%; padding: 16px; border: none; border-radius: 16px;
+  background: var(--color-accent-green); color: #fff; font-weight: 800; font-size: 1.15rem;
+  cursor: pointer; box-shadow: var(--shadow-lg);
+}
+.ride-primary:active { transform: scale(0.98); }

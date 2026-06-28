@@ -75,6 +75,12 @@ def whisper_stt(audio_bytes: bytes, filename: str = "speech.wav") -> dict:
         buf.name = filename
         r = client.audio.transcriptions.create(
             model=GROQ_WHISPER_MODEL, file=buf, language="vi", temperature=0,
+            # Domain hint biases recognition toward HCMC ride vocabulary -> more
+            # accurate place names + faster (skips guessing context).
+            prompt=("Đặt xe ở Thành phố Hồ Chí Minh. Điểm đến: Chợ Bến Thành, Landmark 81, "
+                    "Đại học Bách Khoa, Đại học Công nghệ Thông tin, Đại học Khoa học Tự nhiên, "
+                    "sân bay Tân Sơn Nhất, Vạn Hạnh Mall, bệnh viện Chợ Rẫy, Quận 1, Quận 10, Thủ Đức. "
+                    "Lệnh: xe máy, ô tô, đồng ý, huỷ, đổi điểm đến."),
         )
         return {"text": (r.text or "").strip()}
     except Exception as e:  # noqa: BLE001
@@ -86,7 +92,8 @@ def speech_to_text(audio_bytes: bytes) -> dict:
     try:
         r = requests.post(
             ASR_URL,
-            headers={"api-key": FPT_API_KEY},
+            # FPT STT docs use "api_key"; TTS uses "api-key". Send both to be safe.
+            headers={"api_key": FPT_API_KEY, "api-key": FPT_API_KEY},
             data=audio_bytes,
             timeout=30,
         )
@@ -140,7 +147,7 @@ def stream_agent_narration(booking: dict):
     """
     place = booking.get("place", "điểm đến")
     address = booking.get("address") or ""
-    vehicle = "ô tô điện" if booking.get("vehicle") == "car" else "xe ôm điện"
+    vehicle = "ô tô" if booking.get("vehicle") == "car" else "xe máy"
     km = booking.get("km", 0) or 0
     price = booking.get("price", 0) or 0
 

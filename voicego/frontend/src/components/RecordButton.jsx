@@ -1,18 +1,16 @@
 import React from 'react';
-import '../styles/components/RecordButton.css';
 
-export default function RecordButton({ onPress, onRelease, recording }) {
+// Small round mic FAB. Tap to start, tap again to stop — resumes the SAME
+// conversation (it does not restart the agent from the greeting).
+export default function RecordButton({ onToggle, recording }) {
   return (
     <button
-      className={`record-btn ${recording ? 'recording' : ''}`}
-      onMouseDown={onPress}
-      onMouseUp={onRelease}
-      onTouchStart={onPress}
-      onTouchEnd={onRelease}
-      aria-label="Chạm để nói điểm đến"
+      type="button"
+      className={`record-fab ${recording ? 'recording' : ''}`}
+      onClick={onToggle}
+      aria-label={recording ? 'Đang nghe — chạm để dừng' : 'Chạm để nói'}
     >
       <span className="mic-icon" aria-hidden="true">🎙️</span>
-      <span className="record-label">{recording ? 'Đang nghe…' : 'Chạm để nói'}</span>
     </button>
   );
 }

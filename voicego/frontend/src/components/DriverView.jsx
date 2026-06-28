@@ -7,45 +7,52 @@ import { io } from "socket.io-client";
 
 function DriverView({ user }) {
   const [inputPin, setInputPin] = useState("");
-  const [status, setStatus] = useState("start"); // "start" | "input" | "verifying" | "success" | "error"
+  // "idle" | "offered" | "accepted" | "input" | "verifying" | "success" | "error"
+  const [status, setStatus] = useState("idle");
   const [socket, setSocket] = useState(null);
   const [passengerName, setPassengerName] = useState(null);
-  
+  const [accessibility, setAccessibility] = useState('');
+
   const PIN_LENGTH = 4;
 
   useEffect(() => {
-    const newSocket = io();
+    const newSocket = io();   // same-origin -> /socket.io proxy -> driver server
     setSocket(newSocket);
 
+    newSocket.on("connect", () => newSocket.emit("driver-online", { userId: user.id }));
+    newSocket.on("new-ride", (data) => {
+      if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+      setAccessibility(data?.accessibility || "");
+      setStatus((s) => (s === "idle" ? "offered" : s));
+    });
+    newSocket.on("ride-confirmed", (data) => {
+      setPassengerName(data?.passengerName || "Hành khách");
+      if (data?.accessibility) setAccessibility(data.accessibility);
+      setStatus("accepted");
+    });
     newSocket.on("pin-display", (data) => {
-      setPassengerName(data.passengerName);
+      setPassengerName(data?.passengerName || "Hành khách");
+      if (data?.accessibility) setAccessibility(data.accessibility);
       setStatus("input");
     });
-
     newSocket.on("pin-verified", () => {
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
       setStatus("success");
     });
-
     newSocket.on("pin-failed", () => {
       if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
       setStatus("error");
-      setTimeout(() => {
-        setInputPin("");
-        setStatus("input");
-      }, 1200);
+      setTimeout(() => { setInputPin(""); setStatus("input"); }, 1200);
     });
 
-    return () => {
-      newSocket.disconnect();
-    };
-  }, []);
+    return () => { newSocket.disconnect(); };
+  }, [user.id]);
 
-  const handleStartTrip = () => {
-    if (socket) {
-      socket.emit("driver-start", { userId: user.id });
-      setStatus("waiting");
-    }
+  const handleAccept = () => {
+    if (socket) { socket.emit("driver-accept", { userId: user.id }); setStatus("accepted"); }
+  };
+  const handleArrive = () => {
+    if (socket) socket.emit("driver-arrive", { userId: user.id });
   };
 
   useEffect(() => {
@@ -70,29 +77,48 @@ function DriverView({ user }) {
     }
   }, [status]);
 
+  const handleComplete = useCallback(() => {
+    if (socket) socket.emit("trip-completed", { userId: user.id });
+    setStatus("done");
+  }, [socket, user.id]);
+
   const handleReset = useCallback(() => {
     setInputPin("");
-    setStatus("start");
+    setStatus("idle");
     setPassengerName(null);
+    setAccessibility("");
   }, []);
 
-  if (status === "start" || status === "waiting") {
+  // ─── Idle / Offered / Accepted ──────────────────────────────────────────
+  if (status === "idle" || status === "offered" || status === "accepted") {
+    const cfg = {
+      idle:     { icon: "🚕", title: "Đang chờ cuốc xe…", desc: "Sẽ báo ngay khi có khách đặt.", btn: null },
+      offered:  { icon: "🔔", title: "Có cuốc xe mới!", desc: "Khách đang chờ. Nhận cuốc để bắt đầu.", btn: { label: "Nhận cuốc", on: handleAccept } },
+      accepted: { icon: "🚗", title: "Đang đến đón khách", desc: passengerName ? `Hành khách: ${passengerName}` : "Đang trên đường đến điểm đón.", btn: { label: "Tôi đã đến nơi", on: handleArrive } },
+    }[status];
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
-        <div className="text-center mb-8 animate-fade-in-up">
-          <div className="w-24 h-24 rounded-full bg-grab-green/20 flex items-center justify-center mx-auto mb-6">
-            <span className="text-4xl" role="img" aria-hidden="true">🚕</span>
+        <div className="text-center mb-6 animate-fade-in-up">
+          <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 ${status === "offered" ? "bg-grab-yellow/20 animate-pulse" : "bg-grab-green/20"}`}>
+            <span className="text-4xl" role="img" aria-hidden="true">{cfg.icon}</span>
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Sẵn sàng nhận khách</h2>
-          <p className="text-gray-400">Nhấn nút bên dưới để báo đến điểm đón.</p>
+          <h2 className="text-2xl font-bold text-white mb-2">{cfg.title}</h2>
+          <p className="text-gray-400">{cfg.desc}</p>
         </div>
-        <button
-          onClick={handleStartTrip}
-          disabled={status === "waiting"}
-          className="w-full max-w-md bg-grab-green hover:bg-grab-green-dark active:scale-[0.97] text-white font-bold text-xl py-5 rounded-2xl transition-all shadow-lg shadow-grab-green/20 disabled:opacity-50"
-        >
-          {status === "waiting" ? "Đang tìm hành khách..." : "Tôi đã đến nơi"}
-        </button>
+        {accessibility && (status === "offered" || status === "accepted") && (
+          <div className="w-full max-w-md mb-6 px-5 py-4 rounded-2xl bg-grab-yellow/15 border-2 border-grab-yellow/50 text-center animate-fade-in-up">
+            <div className="text-grab-yellow font-extrabold text-lg">♿ Chuyến chở người khuyết tật</div>
+            <div className="text-white/90 text-sm font-medium mt-1">{accessibility}</div>
+          </div>
+        )}
+        {cfg.btn && (
+          <button
+            onClick={cfg.btn.on}
+            className="w-full max-w-md bg-grab-green hover:bg-grab-green-dark active:scale-[0.97] text-white font-bold text-xl py-5 rounded-2xl transition-all shadow-lg shadow-grab-green/20"
+          >
+            {cfg.btn.label}
+          </button>
+        )}
       </div>
     );
   }
@@ -119,7 +145,7 @@ function DriverView({ user }) {
             Xác nhận thành công!
           </h2>
           <p className="text-lg text-white font-semibold mt-2">
-            Bắt đầu chuyến đi
+            Đang chở khách đến điểm đến
           </p>
         </div>
 
@@ -142,15 +168,37 @@ function DriverView({ user }) {
         </div>
 
         <button
+          onClick={handleComplete}
+          className="animate-fade-in-up mt-2 w-full max-w-sm py-5
+                     bg-grab-green hover:bg-grab-green-dark active:scale-[0.97]
+                     rounded-2xl text-white font-bold text-xl
+                     transition-all duration-200 cursor-pointer shadow-lg shadow-grab-green/20"
+          style={{ animationDelay: "0.35s" }}
+        >
+          🏁 Hoàn thành chuyến đi
+        </button>
+      </div>
+    );
+  }
+
+  // ─── Done State (trip completed) ─────────────────────────────────────────
+  if (status === "done") {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 gap-6">
+        <div className="w-28 h-28 rounded-full bg-grab-green/20 flex items-center justify-center">
+          <span className="text-5xl" role="img" aria-hidden="true">🎉</span>
+        </div>
+        <div className="text-center animate-fade-in-up">
+          <h2 className="text-2xl sm:text-3xl font-black text-grab-green">Chuyến đi hoàn tất</h2>
+          <p className="text-lg text-white font-semibold mt-2">Cảm ơn bạn đã hỗ trợ hành khách!</p>
+        </div>
+        <button
           onClick={handleReset}
           className="animate-fade-in-up mt-2 px-8 py-4 min-h-[64px]
                      bg-white/10 hover:bg-white/20 active:scale-95
-                     rounded-2xl text-white font-bold text-lg
-                     transition-all duration-200 cursor-pointer
-                     focus-visible:ring-4 focus-visible:ring-grab-yellow"
-          style={{ animationDelay: "0.35s" }}
+                     rounded-2xl text-white font-bold text-lg transition-all duration-200 cursor-pointer"
         >
-          🔄 Chuyến đi mới
+          🔄 Nhận chuyến mới
         </button>
       </div>
     );
@@ -172,6 +220,12 @@ function DriverView({ user }) {
         <p className="text-sm text-gray-400 mt-3">
           Yêu cầu hành khách đọc mã PIN 4 chữ số để xác minh
         </p>
+        {accessibility && (
+          <div className="mt-3 px-3 py-2 rounded-xl bg-grab-yellow/15 border border-grab-yellow/40">
+            <div className="text-grab-yellow font-bold text-sm">♿ Chuyến chở người khuyết tật</div>
+            <div className="text-white/80 text-xs mt-0.5">{accessibility}</div>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col items-center gap-3 my-6">

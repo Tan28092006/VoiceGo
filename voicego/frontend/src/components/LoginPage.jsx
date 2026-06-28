@@ -45,7 +45,7 @@ function LoginPage({ onLogin }) {
           </span>
         </div>
         <h1 className="login-title">
-          Grab<span>Assist</span>
+          Voice<span>Go</span>
         </h1>
         <p className="login-subtitle">
           Đăng nhập để tiếp tục

@@ -249,12 +249,19 @@ def admin_reject_report(report_id: str, req: RejectReportRequest):
 
 
 @app.post("/api/voice/stt")
-async def voice_stt(file: UploadFile = File(...)):
-    """Transcribe Vietnamese audio via Groq Whisper (accurate); FPT ASR fallback."""
+async def voice_stt(file: UploadFile = File(...), engine: str = "whisper"):
+    """Transcribe Vietnamese audio. Default: Groq Whisper (primary) + FPT fallback.
+    Pass ?engine=fpt to TEST FPT.AI ASR first (Groq fallback)."""
     audio = await file.read()
-    result = whisper_stt(audio, file.filename or "speech.wav")
-    if not result.get("text"):
-        result = speech_to_text(audio)  # fallback if Whisper unavailable
+    if engine == "fpt":
+        result = speech_to_text(audio)                          # FPT first (test)
+        if not result.get("text"):
+            result = whisper_stt(audio, file.filename or "speech.wav")
+    else:
+        result = whisper_stt(audio, file.filename or "speech.wav")  # Groq Whisper (default)
+        if not result.get("text"):
+            result = speech_to_text(audio)
+    result["engine"] = engine
     return result
 
 

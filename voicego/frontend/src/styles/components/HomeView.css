@@ -1,0 +1,120 @@
+/* HomeView — Grab-like light landing screen (ported from css/home.css, scoped). */
+.home-shell {
+  --grab-green: #153f2a;
+  --grab-green-light: #23864b;
+  --text-main: #25272b;
+  --border-soft: #eceef1;
+  --tile-bg: #f7f7f8;
+  --shadow-soft: 0 10px 28px rgba(15, 26, 18, 0.08);
+  min-height: 100dvh;
+  background: #e9efe9;
+  color: var(--text-main);
+  display: flex;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.home-shell .app-shell {
+  position: relative;
+  width: min(100vw, 512px);
+  min-height: 100dvh;
+  padding-bottom: 86px;
+  overflow-x: hidden;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 18px 50px rgba(0, 0, 0, 0.12);
+}
+
+.home-shell .hero-band {
+  padding: 26px 17px 25px;
+  background: linear-gradient(180deg, #0f4932 0%, var(--grab-green) 100%);
+}
+.home-shell .hero-greeting {
+  color: #d7f5e3;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.home-shell .voice-search {
+  width: 100%;
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 24px;
+  color: #54585c;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .12s ease;
+}
+.home-shell .voice-search:active { transform: scale(0.98); }
+.home-shell .search-icon {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px;
+}
+
+.home-shell .services {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 26px 18px;
+  padding: 28px 26px 12px;
+}
+.home-shell .service-item {
+  min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  border: 0; padding: 0;
+  color: #424448; background: transparent;
+  font: inherit; font-size: 16px; font-weight: 700;
+  cursor: pointer;
+}
+.home-shell .service-icon {
+  width: 70px; height: 70px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--tile-bg); border-radius: 20px; font-size: 32px;
+  transition: transform .12s ease;
+}
+.home-shell .service-item:active .service-icon { transform: scale(0.94); }
+.home-shell .service-item.active .service-icon {
+  background: #f7fff8; border: 3px dashed #3f914b;
+}
+
+.home-shell .pager { display: flex; justify-content: center; gap: 6px; padding: 6px 0 26px; }
+.home-shell .pager-dot { width: 18px; height: 5px; border-radius: 999px; background: #d4d5d7; }
+.home-shell .pager-dot.active { width: 26px; background: #5e5f61; }
+
+.home-shell .wallet-card {
+  margin: 0 17px 34px; padding: 18px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border-soft); border-radius: 16px; background: #fff;
+}
+.home-shell .wallet-card p { margin: 0 0 6px; color: #a0a0a4; font-size: 15px; font-weight: 700; }
+.home-shell .wallet-card strong { display: block; color: #202124; font-size: 20px; }
+.home-shell .wallet-badge {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; color: #fff; background: #ef3e4a; font-size: 22px; font-weight: 800;
+}
+
+.home-shell .promos { padding: 0 17px; }
+.home-shell .promos h1 { margin: 0 0 18px; color: #25272b; font-size: 24px; }
+.home-shell .promo-card { margin: 0 0 28px; border-radius: 12px; overflow: hidden; background: #eef0f2; }
+.home-shell .promo-card img { display: block; width: 100%; aspect-ratio: 476 / 236; object-fit: cover; }
+
+.home-shell .bottom-nav {
+  position: fixed; left: 50%; bottom: 0; z-index: 10;
+  width: min(100vw, 512px); min-height: 68px; transform: translateX(-50%);
+  display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+  border-top: 1px solid var(--border-soft); background: rgba(255, 255, 255, 0.98);
+}
+.home-shell .nav-item {
+  min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  color: #8c8d91; text-decoration: none; font-size: 13px;
+}
+.home-shell .nav-item span:first-child { font-size: 22px; }
+.home-shell .nav-item.active { color: var(--grab-green-light); }
