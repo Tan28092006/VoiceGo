@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VoiceGo — Đang di chuyển</title>
+    <link rel="stylesheet" href="css/ride-status.css">
+</head>
+<body>
+    <main class="ride-shell moving" aria-label="Màn hình chuyến đi đang di chuyển">
+        <section class="map-panel" aria-label="Bản đồ chuyến đi">
+            <div class="map-grid"></div>
+            <div class="route-line"></div>
+            <div class="pin pickup">●</div>
+            <div class="pin destination">●</div>
+            <div class="car-marker">🚗</div>
+            <a class="back-button" href="home.html" aria-label="Quay lại trang chủ">‹</a>
+            <div class="eta-pill">
+                <strong>8 phút</strong>
+                <span>còn lại</span>
+            </div>
+        </section>
+
+        <section class="trip-sheet" aria-live="polite">
+            <div class="sheet-handle" aria-hidden="true"></div>
+            <p class="eyebrow">Đang di chuyển</p>
+            <h1>Tài xế đang đưa bạn đến điểm đến</h1>
+
+            <div class="progress-card">
+                <div>
+                    <span class="metric-label">Còn lại</span>
+                    <strong>3.2 km</strong>
+                </div>
+                <div>
+                    <span class="metric-label">Dự kiến</span>
+                    <strong>08:42</strong>
+                </div>
+                <div>
+                    <span class="metric-label">Giá</span>
+                    <strong>52k</strong>
+                </div>
+            </div>
+
+            <div class="route-card">
+                <div class="route-row">
+                    <span class="dot start"></span>
+                    <div>
+                        <small>Điểm đón</small>
+                        <strong>Trường Đại học Quốc tế</strong>
+                    </div>
+                </div>
+                <div class="route-divider"></div>
+                <div class="route-row">
+                    <span class="dot end"></span>
+                    <div>
+                        <small>Điểm đến</small>
+                        <strong>Chợ Bến Thành, Quận 1</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="driver-card">
+                <div class="driver-avatar" aria-hidden="true">A</div>
+                <div class="driver-info">
+                    <strong>Nguyễn Văn A</strong>
+                    <span>59-X1 234.56 · GrabBike EV</span>
+                </div>
+                <button class="icon-button" type="button" aria-label="Gọi tài xế">☎</button>
+                <button class="icon-button" type="button" aria-label="Nhắn tin tài xế">💬</button>
+            </div>
+
+            <div class="accessibility-note">
+                <span aria-hidden="true">♿</span>
+                <p>Tài xế đã nhận thông báo hỗ trợ tiếp cận và sẽ xác nhận vị trí khi đến nơi.</p>
+            </div>
+
+        </section>
+    </main>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VoiceGo — Đã tới nơi</title>
+    <link rel="stylesheet" href="css/ride-status.css">
+</head>
+<body>
+    <main class="ride-shell arrived" aria-label="Màn hình chuyến đi đã tới nơi">
+        <section class="arrival-hero">
+            <a class="back-button dark" href="home.html" aria-label="Quay lại trang chủ">‹</a>
+            <div class="arrival-check" aria-hidden="true">✓</div>
+            <p class="eyebrow">Đã tới nơi</p>
+            <h1>Chuyến đi đã hoàn tất</h1>
+            <p class="arrival-subtitle">Cảm ơn bạn đã sử dụng VoiceGo. Bạn có thể đánh giá mức độ tiếp cận của điểm đến để hỗ trợ cộng đồng.</p>
+        </section>
+
+        <section class="trip-sheet arrived-sheet">
+            <div class="summary-card">
+                <div>
+                    <span class="metric-label">Quãng đường</span>
+                    <strong>10.2 km</strong>
+                </div>
+                <div>
+                    <span class="metric-label">Thời gian</span>
+                    <strong>24 phút</strong>
+                </div>
+                <div>
+                    <span class="metric-label">Tổng tiền</span>
+                    <strong>52k</strong>
+                </div>
+            </div>
+
+            <div class="destination-card">
+                <span class="destination-icon" aria-hidden="true">📍</span>
+                <div>
+                    <small>Điểm đến</small>
+                    <strong>Chợ Bến Thành, Quận 1</strong>
+                </div>
+            </div>
+
+            <section class="rating-card" aria-label="Đánh giá accessibility score">
+                <p class="eyebrow">Accessibility score</p>
+                <h2>Điểm đến này có dễ tiếp cận không?</h2>
+                <div class="stars" role="group" aria-label="Chọn điểm từ 1 đến 5">
+                    <button type="button" aria-label="1 điểm">★</button>
+                    <button type="button" aria-label="2 điểm">★</button>
+                    <button type="button" aria-label="3 điểm">★</button>
+                    <button type="button" aria-label="4 điểm">★</button>
+                    <button type="button" aria-label="5 điểm">★</button>
+                </div>
+                <div class="accessibility-toggle">
+                    <span>Lối vào có dốc / dễ tiếp cận</span>
+                    <strong>Có</strong>
+                </div>
+            </section>
+
+            <section class="report-card">
+                <div>
+                    <strong>Báo cáo thông tin địa điểm</strong>
+                    <p>Cung cấp thêm ảnh, lối đi, vỉa hè hoặc điểm hỗ trợ để nhận điểm thưởng sau khi admin duyệt.</p>
+                </div>
+                <button type="button">Report location</button>
+            </section>
+
+            <a class="primary-action" href="home.html">Về trang chủ</a>
+        </section>
+    </main>
+</body>
+</html>
