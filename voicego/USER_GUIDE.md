@@ -26,7 +26,3 @@ Mở app → nhập email + mật khẩu (tài khoản demo ở [SETUP.md](SETUP
 3. Đang đến đón → bấm **“Tôi đã đến nơi”** → màn nhập **mã PIN**.
 4. Hỏi khách đọc mã PIN → **nhập đúng** → xác minh an toàn → bấm **“Hoàn thành chuyến đi”**.
 
-## Mẹo cho giám khảo (demo)
-- Địa điểm chuẩn để demo: Chợ Bến Thành, Landmark 81, Vạn Hạnh Mall, Bệnh viện Chợ Rẫy, sân bay Tân Sơn Nhất.
-- Thử tính tiếp cận: nói **“đại học bách khoa” → “cơ sở 1” → “cổng 1”** (thấy điểm xanh accessible trên map).
-- Ngoài HCMC (vd “đại học quốc gia Hà Nội”) → app báo “ngoài khu vực”, không bịa.
