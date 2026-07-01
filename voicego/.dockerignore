@@ -1,0 +1,16 @@
+# Không đưa rác vào build context (nhỏ + nhanh + tránh lộ secret)
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/venv
+frontend/dist
+**/.env
+**/*.env
+!**/*.env.example
+*.mp3
+*.wav
+.git
+.vscode
+.idea
+*.md

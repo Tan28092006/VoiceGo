@@ -10,3 +10,6 @@ pymongo==4.10.1
 google-genai==2.10.0
 
 bcrypt==4.1.2
+
+# Realtime PIN flow — Socket.IO relay nhúng trong FastAPI (không cần server Node)
+python-socketio==5.11.4

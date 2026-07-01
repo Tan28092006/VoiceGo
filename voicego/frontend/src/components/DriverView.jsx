@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { io } from "socket.io-client";
+import { SOCKET_URL } from "../services/config";
 
 /**
  * DriverView.jsx – PIN Verification for drivers.
@@ -16,7 +17,7 @@ function DriverView({ user }) {
   const PIN_LENGTH = 4;
 
   useEffect(() => {
-    const newSocket = io();   // same-origin -> /socket.io proxy -> driver server
+    const newSocket = io(SOCKET_URL);   // dev: same-origin proxy | prod: backend Render
     setSocket(newSocket);
 
     newSocket.on("connect", () => newSocket.emit("driver-online", { userId: user.id }));

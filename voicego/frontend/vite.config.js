@@ -19,7 +19,9 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:3001',
+        // Relay Socket.IO giờ nằm chung backend FastAPI (main:socket_app),
+        // không còn server Node :3001 nữa.
+        target: 'http://localhost:8000',
         changeOrigin: true,
         ws: true,
       },

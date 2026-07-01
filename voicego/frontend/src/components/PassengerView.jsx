@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { io } from "socket.io-client";
+import { SOCKET_URL } from "../services/config";
 
 /**
  * PassengerView.jsx – PIN Display for visually impaired passengers.
@@ -13,7 +14,7 @@ function PassengerView({ user }) {
 
   useEffect(() => {
     // Initialize socket connection
-    const newSocket = io();
+    const newSocket = io(SOCKET_URL);
     setSocket(newSocket);
 
     // Tell server we are waiting

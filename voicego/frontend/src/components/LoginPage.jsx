@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { BACKEND_URL } from "../services/config";
 import "../styles/components/LoginPage.css";
 
 function LoginPage({ onLogin }) {
@@ -6,14 +7,24 @@ function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [slow, setSlow] = useState(false);   // backend đang khởi động (cold start)
+
+  // Warm-up: đánh thức backend Render NGAY khi mở trang, trong lúc người dùng còn
+  // đang gõ email/mật khẩu — để lúc bấm "Đăng nhập" máy chủ đã ấm sẵn.
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/health`).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
+    setSlow(false);
+    // Nếu quá 4s chưa xong -> nhiều khả năng máy chủ free đang cold-start.
+    const slowTimer = setTimeout(() => setSlow(true), 4000);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -32,7 +43,9 @@ function LoginPage({ onLogin }) {
       console.error(err);
       setError("Lỗi kết nối đến máy chủ");
     } finally {
+      clearTimeout(slowTimer);
       setIsLoading(false);
+      setSlow(false);
     }
   };
 
@@ -57,6 +70,12 @@ function LoginPage({ onLogin }) {
           {error && (
             <div className="login-error">
               {error}
+            </div>
+          )}
+
+          {slow && !error && (
+            <div className="login-error" style={{ background: "#fff7ed", color: "#9a3412" }}>
+              Máy chủ đang khởi động (lần đầu có thể mất ~30 giây), vui lòng đợi…
             </div>
           )}
 
@@ -87,7 +106,7 @@ function LoginPage({ onLogin }) {
             disabled={isLoading}
             className="login-button"
           >
-            {isLoading ? "Đang xử lý..." : "Đăng Nhập"}
+            {isLoading ? (slow ? "Đang khởi động máy chủ…" : "Đang xử lý...") : "Đăng Nhập"}
           </button>
         </form>
       </div>

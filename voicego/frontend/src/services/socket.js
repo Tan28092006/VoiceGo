@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { SOCKET_URL } from './config';
 
 let socket = null;
 
@@ -10,9 +11,9 @@ export function connectSocket(callbacks = {}) {
   // dev). On HTTPS that becomes wss with no mixed-content. Override with
   // ?realtime=http://host:3001 only when the driver server is on another host.
   const override = new URLSearchParams(window.location.search).get('realtime');
-  socket = override
-    ? io(override, { transports: ['websocket', 'polling'] })
-    : io({ transports: ['websocket', 'polling'] });
+  const base = override || SOCKET_URL;   // undefined -> same-origin (dev/Vite proxy)
+  const opts = { transports: ['websocket', 'polling'] };
+  socket = base ? io(base, opts) : io(opts);
 
   socket.on('connect', () => callbacks.onConnect?.());
   socket.on('disconnect', () => callbacks.onDisconnect?.());

@@ -295,3 +295,9 @@ if os.path.exists(frontend_dist):
             return FileResponse(file_path)
         return FileResponse(os.path.join(frontend_dist, "index.html"))
 
+
+# Socket.IO relay (luồng PIN realtime) nhúng cùng service — chạy bằng:
+#   uvicorn main:socket_app   (KHÔNG phải main:app, nếu muốn có realtime)
+from realtime import attach  # noqa: E402
+socket_app = attach(app)
+

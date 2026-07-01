@@ -180,3 +180,6 @@ To prevent users from boarding the wrong vehicle, the system generates a unique 
 - User interview records: https://drive.google.com/file/d/1Ulro0xne8gwVoT0kMiwNmzdKeDphyhUJ/view?usp=sharing
 
 
+(LINK: https://docs.google.com/spreadsheets/d/1kul9LhGJu0Gap3uZgWiEGo3gmceUtxT_cPT1FAsvziY/edit?gid=1628566515#gid=1628566515)
+
+mô hình Double Diamond

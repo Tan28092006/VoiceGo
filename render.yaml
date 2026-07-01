@@ -1,0 +1,31 @@
+# Render Blueprint — deploy 1 service (Docker) miễn phí.
+# Render Dashboard -> New -> Blueprint -> trỏ vào repo. Điền các secret bên dưới.
+services:
+  - type: web
+    name: voicego
+    runtime: docker
+    plan: free
+    dockerfilePath: ./voicego/Dockerfile   # đổi nếu repo của bạn đặt Dockerfile ở chỗ khác
+    dockerContext: ./voicego
+    healthCheckPath: /api/health
+    envVars:
+      - key: MONGODB_URI        # chuỗi kết nối MongoDB Atlas (mongodb+srv://...)
+        sync: false
+      - key: MONGODB_DB
+        value: voicego
+      - key: GROQ_API_KEY       # LLM cho agent
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_GEOCODE_MODEL
+        value: llama-3.1-8b-instant
+      - key: GROQ_WHISPER_KEY   # STT Whisper
+        sync: false
+      - key: GROQ_WHISPER_MODEL
+        value: whisper-large-v3-turbo
+      - key: FPT_API_KEY        # STT/TTS tiếng Việt
+        sync: false
+      - key: GEMINI_API_KEY     # tuỳ chọn (để trống cũng được)
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash

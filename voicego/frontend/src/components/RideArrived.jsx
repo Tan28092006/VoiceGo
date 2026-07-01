@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { BACKEND_URL } from '../services/config';
 import '../styles/components/RideStatus.css';
 
 const VND = (v) => (Number.isFinite(+v) ? (+v).toLocaleString('vi-VN') + 'đ' : '—');
@@ -23,7 +24,7 @@ export default function RideArrived({ onHome }) {
   const submitRating = async () => {
     if (!stars || sent) return;
     try {
-      await fetch('/api/reports', {
+      await fetch(`${BACKEND_URL}/api/reports`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

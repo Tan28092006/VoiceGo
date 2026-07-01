@@ -230,6 +230,10 @@ export default function useVoiceApp() {
         if (ui.destination) {
           dispatch({ type: 'SET_CANDIDATES', payload: null });   // a place was chosen
           dispatch({ type: 'SET_DESTINATION', payload: ui.destination });
+          // New place => old quote/route belongs to the previous destination. Drop it
+          // so the map never shows the old route while waiting for a fresh quote.
+          // (If the agent re-quotes in the same turn, ui.quote below sets the new one.)
+          dispatch({ type: 'SET_QUOTE', payload: null });
           dispatch({ type: 'SET_STATE', payload: 'destination_set' });
         }
         if (ui.quote) {

@@ -1,4 +1,4 @@
-const BACKEND_URL = '';  // empty = same origin, proxied by Vite
+import { BACKEND_URL } from './config';  // '' = same-origin (dev) | URL Render (prod)
 
 export async function checkHealth() {
   const res = await fetch(`${BACKEND_URL}/api/health`);
