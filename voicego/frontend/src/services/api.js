@@ -24,11 +24,11 @@ export async function textToSpeech(text, voice = 'banmai', speed = '') {
   return res.blob();
 }
 
-export async function agentChat(messages) {
+export async function agentChat(messages, pickup = null) {
   const res = await fetch(`${BACKEND_URL}/api/agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, pickup }),
   });
   return res.json();
 }

@@ -57,6 +57,7 @@ class GeocodeRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[dict]
+    pickup: dict | None = None   # rider's live GPS {lat,lng[,name]}; None -> default
 
 
 class LoginRequest(BaseModel):
@@ -276,7 +277,7 @@ def voice_tts(req: TtsRequest):
 @app.post("/api/agent/chat")
 def agent_chat(req: ChatRequest):
     """One turn of the conversational booking agent (Groq + tools)."""
-    return run_agent(req.messages)
+    return run_agent(req.messages, req.pickup)
 
 
 @app.post("/api/voice/geocode")

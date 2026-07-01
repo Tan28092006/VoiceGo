@@ -126,8 +126,10 @@ def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes |
     if not async_url:
         return None
 
-    # Poll the async URL until the audio is ready.
-    for _ in range(12):
+    # Poll the async URL until the audio is ready. Poll immediately (no lead
+    # sleep) then every 0.4s — finer polling catches the file ~1s sooner per
+    # reply. Budget ~7s total (18 × 0.4s) ≈ old 8.4s.
+    for i in range(18):
         try:
             a = requests.get(async_url, timeout=15)
             ctype = a.headers.get("Content-Type", "")
@@ -135,7 +137,7 @@ def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes |
                 return a.content
         except Exception:  # noqa: BLE001
             pass
-        time.sleep(0.7)
+        time.sleep(0.4)
     return None
 
 

@@ -21,49 +21,50 @@ from voice import groq_client, GROQ_MODEL
 from geocode import resolve_destination, geocode_candidates, _nominatim, _haversine_km
 from places_db import lookup_all as _lookup_all
 from routing import road_route
-from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request
+from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request, find_gate_group
 
 MAX_ALT_KM = 80  # drop same-name places too far away (e.g. another province)
 
-ORIGIN = {"name": "Trường Đại học Quốc tế", "lat": 10.8782, "lng": 106.8012}
+# Fallback pickup when the rider's GPS is unavailable (Trường Đại học Quốc tế).
+# Real bookings use the GPS coords the client sends with each turn.
+DEFAULT_PICKUP = {"name": "Trường Đại học Quốc tế", "lat": 10.8782, "lng": 106.8012}
 PRICE = {"bike": {"base": 12000, "perKm": 4000}, "car": {"base": 29000, "perKm": 12000}}
 
-# Feature 2 — Accessible entrances (HARDCODED). When a destination is one of these
-# multi-gate places, offer a more accessible gate. The frontend colours the
-# accessible point green so judges see accessibility-aware routing.
-ACCESSIBLE_GATES = [
-    {
-        "near": (10.77230, 106.65770), "radius_km": 0.9,
-        "label": "Đại học Bách Khoa (cơ sở 1, Quận 10)",
-        "gates": [
-            {"name": "ĐH Bách Khoa — Cổng 1 (dễ tiếp cận)",
-             "address": "Cổng 1, ĐH Bách Khoa, 268 Lý Thường Kiệt, Quận 10",
-             "lat": 10.772085, "lng": 106.657829, "accessible": True},
-            {"name": "ĐH Bách Khoa — Cổng 3",
-             "address": "Cổng 3, ĐH Bách Khoa, Quận 10",
-             "lat": 10.773855, "lng": 106.661507, "accessible": False},
-        ],
-    },
-]
+
+def _pickup(pickup):
+    """Normalize the client-sent pickup to {name,lat,lng}; fall back to DEFAULT_PICKUP
+    when GPS is missing/invalid so quoting + routing always have an origin."""
+    p = pickup or {}
+    lat, lng = p.get("lat"), p.get("lng")
+    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+        return {"name": p.get("name") or "Vị trí của bạn", "lat": float(lat), "lng": float(lng)}
+    return dict(DEFAULT_PICKUP)
 
 
+# Feature 2 — Accessible entrances. Multi-gate places (with a more accessible
+# gate for visually-impaired riders) live in the DB (accessible_gates), so more
+# places can be added without code changes. The frontend colours the accessible
+# point green so judges see accessibility-aware routing.
 def _gates_for(lat, lng):
-    """Return the accessible-gate config for a destination, or None."""
-    for g in ACCESSIBLE_GATES:
-        if _haversine_km(lat, lng, g["near"][0], g["near"][1]) <= g["radius_km"]:
-            return g
-    return None
+    """Return the accessible-gate group for a destination (from DB), or None."""
+    return find_gate_group(lat, lng)
 
 
 def _gate_candidates(g):
-    return {"ok": True, "kind": "candidates", "candidates": g["gates"], "accessibility_choice": True,
-            "next": (f"Đây là {g['label']}. Có CỔNG dễ tiếp cận hơn cho người khiếm thị là Cổng 1 "
-                     "(đường đi an toàn, có chỗ đón rõ ràng). HỎI: 'Bạn muốn đến Cổng 1 — dễ tiếp cận, "
-                     "hay Cổng 3?'. KHUYẾN NGHỊ Cổng 1. Khi người dùng chọn -> select_candidate(index).")}
+    """Offer a multi-entrance place's gates, recommending the accessible one.
+    The prompt text is derived from the data — no hardcoded gate names."""
+    gates = g.get("gates") or []
+    accessible = next((x for x in gates if x.get("accessible")), None)
+    acc_name = (accessible or (gates[0] if gates else {})).get("name", "cổng dễ tiếp cận")
+    return {"ok": True, "kind": "candidates", "candidates": gates, "accessibility_choice": True,
+            "next": (f"Đây là {g.get('label', 'địa điểm này')}. Có lối vào dễ tiếp cận hơn cho người "
+                     f"khiếm thị: {acc_name}. ĐỌC danh sách các cổng theo SỐ THỨ TỰ kèm mô tả, HỎI người "
+                     "dùng chọn cổng nào và KHUYẾN NGHỊ cổng dễ tiếp cận. "
+                     "Khi người dùng chọn -> select_candidate(index).")}
 
 SYSTEM_PROMPT = (
-    "Bạn là VoiceGo — trợ lý ĐẶT XE bằng giọng nói cho người KHIẾM THỊ ở TP.HCM. "
-    "Điểm đón CỐ ĐỊNH: Trường Đại học Quốc tế (Thủ Đức); người dùng chỉ nói ĐIỂM ĐẾN.\n"
+    "Bạn là VoiceGo — trợ lý ĐẶT XE bằng giọng nói cho người KHIẾM THỊ. "
+    "Điểm đón là VỊ TRÍ HIỆN TẠI của người dùng (lấy từ GPS); người dùng chỉ nói ĐIỂM ĐẾN.\n"
     "LUỒNG BẮT BUỘC, đúng thứ tự — không được nhảy bước:\n"
     "1) Người dùng nêu điểm đến → GỌI resolve_destination(query). "
     "Nếu trả về NHIỀU candidates: ĐỌC danh sách theo SỐ THỨ TỰ (1, 2, ...) kèm khu vực, HỎI người dùng "
@@ -229,14 +230,14 @@ _NEXT_CANDIDATES = (
 )
 
 
-def _do_resolve(query):
+def _do_resolve(query, pk):
     """Resolve a spoken place. If it's ambiguous (a place with several branches,
     or a street that exists in many districts) -> return a LIST of REAL candidates
     to pick from. GENERAL: the geocoder finds branches of ANY place (no per-place
     aliases needed); the verified gazetteer just adds accuracy + branches the
     geocoder misses. No hallucinated addresses — every candidate is a real coord."""
     ga = _lookup_all(query)                                   # verified (accurate)
-    geo = geocode_candidates(query, ORIGIN["lat"], ORIGIN["lng"]) if len(ga) < 2 else []
+    geo = geocode_candidates(query, pk["lat"], pk["lng"]) if len(ga) < 2 else []
 
     # Merge: gazetteer first (verified), then OSM results not near an existing pick.
     merged = [{"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]} for c in ga]
@@ -249,14 +250,13 @@ def _do_resolve(query):
         return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
 
     # Single / none -> the accurate single resolver (gazetteer single, grounded, Nominatim).
-    r = resolve_destination(query, ORIGIN["lat"], ORIGIN["lng"])
+    r = resolve_destination(query, pk["lat"], pk["lng"])
     if not r.get("ok"):
         reason = r.get("reason", "not_found")
         out = {"ok": False, "kind": "place", "reason": reason}
         if reason == "out_of_area":
-            out["message"] = ("Địa điểm này nằm ngoài Thành phố Hồ Chí Minh. "
-                              "Hiện mình chỉ hỗ trợ đặt xe trong khu vực TP.HCM. "
-                              "Bạn cho mình một điểm đến trong thành phố nhé.")
+            out["message"] = ("Địa điểm này nằm quá xa điểm đón hiện tại của bạn nên mình "
+                              "chưa hỗ trợ đặt xe tới đó. Bạn cho mình một điểm đến gần hơn nhé.")
         return out
 
     g = _gates_for(r["lat"], r["lng"])     # multi-gate place -> offer accessible gate
@@ -287,7 +287,7 @@ def _do_select(msgs, index):
             "next": "Hỏi người dùng 'xe máy hay ô tô' TRƯỚC khi get_quote."}
 
 
-def _do_quote(msgs, vehicle):
+def _do_quote(msgs, vehicle, pk):
     place = _last_tool(msgs, "place")
     if not place:
         return {"ok": False, "kind": "quote", "reason": "no_destination"}
@@ -297,7 +297,7 @@ def _do_quote(msgs, vehicle):
         return {"ok": False, "kind": "quote", "reason": "need_vehicle",
                 "message": "Chưa chọn loại xe. Hãy HỎI người dùng muốn 'xe máy hay ô tô' trước khi báo giá."}
     vehicle = picked  # trust what the user actually said
-    rt = road_route(ORIGIN["lat"], ORIGIN["lng"], place["lat"], place["lng"])
+    rt = road_route(pk["lat"], pk["lng"], place["lat"], place["lng"])
     km = rt["distanceKm"] if rt else None
     price = _quote_price(vehicle, km or 0)
     return {
@@ -308,7 +308,7 @@ def _do_quote(msgs, vehicle):
     }
 
 
-def _do_book(msgs, vehicle):
+def _do_book(msgs, vehicle, pk):
     q = _last_tool(msgs, "quote")
     place = _last_tool(msgs, "place")
     ref = q or place
@@ -320,12 +320,12 @@ def _do_book(msgs, vehicle):
     fallback = {
         "ok": True, "kind": "booked", "driver": "Nguyễn Văn A", "plate": "59-X1 234.56",
         "etaMin": 4, "vehicle": vehicle, "destination": ref.get("name"),
-        "address": ref.get("address"), "priceVnd": price, "pickup": ORIGIN["name"],
+        "address": ref.get("address"), "priceVnd": price, "pickup": pk["name"],
     }
     try:
         ride = create_ride_request(
             passenger_id=DEMO_PASSENGER_ID,
-            pickup={"name": ORIGIN["name"], "lat": ORIGIN["lat"], "lng": ORIGIN["lng"]},
+            pickup={"name": pk["name"], "lat": pk["lat"], "lng": pk["lng"]},
             destination={
                 "name": ref.get("name"),
                 "address": ref.get("address"),
@@ -393,12 +393,14 @@ def _chat_create(client, msgs):
     raise last
 
 
-def run_agent(messages: list[dict]) -> dict:
-    """One agent turn. Returns {reply, messages, ui}."""
+def run_agent(messages: list[dict], pickup: dict | None = None) -> dict:
+    """One agent turn. Returns {reply, messages, ui}. `pickup` is the rider's live
+    GPS ({lat,lng[,name]}); falls back to DEFAULT_PICKUP when unavailable."""
     client = groq_client()
     if not client:
         return {"reply": "Hệ thống agent chưa sẵn sàng (thiếu GROQ_API_KEY).", "messages": messages, "ui": {}}
 
+    pk = _pickup(pickup)
     msgs = list(messages)
     if not any(m.get("role") == "system" for m in msgs):
         msgs.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
@@ -422,20 +424,20 @@ def run_agent(messages: list[dict]) -> dict:
                 args = {}
             name = tc.function.name
             if name == "resolve_destination":
-                res = _do_resolve(args.get("query", ""))
+                res = _do_resolve(args.get("query", ""), pk)
                 _apply_place_ui(ui, res)
             elif name == "select_candidate":
                 res = _do_select(msgs, args.get("index"))
                 _apply_place_ui(ui, res)
             elif name == "get_quote":
-                res = _do_quote(msgs, args.get("vehicle", "bike"))
+                res = _do_quote(msgs, args.get("vehicle", "bike"), pk)
                 if res.get("ok"):
                     ui["quote"] = {"name": res["name"], "address": res.get("address"),
                                    "lat": res["lat"], "lng": res["lng"], "distanceKm": res.get("distanceKm"),
                                    "durationMin": res.get("durationMin"), "priceVnd": res.get("priceVnd"),
                                    "vehicle": res.get("vehicle"), "geometry": res.get("geometry")}
             elif name == "book_ride":
-                res = _do_book(msgs, args.get("vehicle", "bike"))
+                res = _do_book(msgs, args.get("vehicle", "bike"), pk)
                 if res.get("ok"):
                     ui["booked"] = res
             elif name == "end_conversation":

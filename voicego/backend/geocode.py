@@ -20,34 +20,33 @@ import math
 import requests
 
 from voice import GEMINI_API_KEY, GEMINI_MODEL, groq_json
-from places_db import lookup as _local_lookup, _fold as _fold_text
-
-# Distinctive names of OTHER cities/provinces. If the user names one, we don't
-# serve it (HCMC only) — reject before geocoding warps it onto a random HCMC place.
-_OTHER_CITY = (
-    "ha noi", "da nang", "hai phong", "nha trang", "can tho", "da lat", "vung tau",
-    "phu quoc", "ha long", "noi bai", "sa pa", "quy nhon", "hoi an", "bien hoa",
-    "buon ma thuot", "pleiku", "thanh hoa", "nghe an", "ha tinh", "quang ninh",
-)
-
-
-def _names_other_city(text):
-    fq = _fold_text(text)
-    return any(re.search(rf"\b{c}\b", fq) for c in _OTHER_CITY)
+from places_db import lookup as _local_lookup
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
-# Greater Hồ Chí Minh City bounding box (lat_min, lat_max, lng_min, lng_max).
-# Used to (a) bias/limit Nominatim and (b) reject results outside the city
-# (e.g. "Đại học Quốc gia Hà Nội" must NOT resolve).
-HCMC_BOUNDS = (10.35, 11.25, 106.30, 107.05)
-# Nominatim viewbox is "lon1,lat1,lon2,lat2"
-HCMC_VIEWBOX = f"{HCMC_BOUNDS[2]},{HCMC_BOUNDS[1]},{HCMC_BOUNDS[3]},{HCMC_BOUNDS[0]}"
+# Service model: instead of a fixed city box, we bias + limit geocoding to a
+# radius around the PICKUP location (the user's GPS). This makes the app work
+# anywhere in Vietnam while still rejecting destinations too far to serve.
+DEFAULT_CENTER = (10.8782, 106.8012)   # fallback pickup when GPS is unavailable
+SERVICE_RADIUS_KM = 100                # max ride distance we serve from pickup
 
 
-def _in_hcmc(lat, lng):
-    return (HCMC_BOUNDS[0] <= lat <= HCMC_BOUNDS[1]
-            and HCMC_BOUNDS[2] <= lng <= HCMC_BOUNDS[3])
+def _viewbox(center_lat, center_lng, radius_km=SERVICE_RADIUS_KM):
+    """Nominatim viewbox ('lon1,lat1,lon2,lat2') around a center + radius.
+    Biases results toward the pickup area without forcing (no bounded=1)."""
+    if center_lat is None or center_lng is None:
+        return None
+    dlat = radius_km / 111.0
+    dlng = radius_km / (111.0 * max(0.1, math.cos(math.radians(center_lat))))
+    return f"{center_lng - dlng},{center_lat + dlat},{center_lng + dlng},{center_lat - dlat}"
+
+
+def _within_service(lat, lng, center_lat, center_lng, radius_km=SERVICE_RADIUS_KM):
+    """True if a result is close enough to the pickup to serve. When no center is
+    known, accept anything (nationwide) rather than reject."""
+    if center_lat is None or center_lng is None:
+        return True
+    return _haversine_km(center_lat, center_lng, lat, lng) <= radius_km
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):
@@ -99,16 +98,18 @@ def _parse_json(raw):
         return None
 
 
-def _nominatim_full(address):
-    """Return (lat, lng, display_name) for an address/POI, or None."""
+def _nominatim_full(address, center_lat=None, center_lng=None):
+    """Return (lat, lng, display_name) for an address/POI, or None. When a center
+    is given, viewbox BIASES toward the pickup area (no bounded=1, so an out-of-
+    area query isn't warped onto a random in-box place)."""
+    params = {"q": address, "format": "json", "limit": 1, "countrycodes": "vn"}
+    vb = _viewbox(center_lat, center_lng)
+    if vb:
+        params["viewbox"] = vb
     try:
         r = requests.get(
             NOMINATIM_URL,
-            # viewbox BIASES toward HCMC but does NOT force (no bounded=1, which
-            # would warp an out-of-town query like "ĐHQG Hà Nội" onto a random
-            # in-box place). Out-of-HCMC hits are rejected by _in_hcmc afterwards.
-            params={"q": address, "format": "json", "limit": 1, "countrycodes": "vn",
-                    "viewbox": HCMC_VIEWBOX},
+            params=params,
             headers={"User-Agent": "VoiceGo/1.0 (hackathon accessibility demo)"},
             timeout=10,
         )
@@ -123,8 +124,8 @@ def _nominatim_full(address):
     return None
 
 
-def _nominatim(address):
-    r = _nominatim_full(address)
+def _nominatim(address, center_lat=None, center_lng=None):
+    r = _nominatim_full(address, center_lat, center_lng)
     return (r[0], r[1]) if r else None
 
 
@@ -134,17 +135,21 @@ def _clean_display(disp):
 
 
 def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
-    """Multiple DISTINCT real HCMC matches for an ambiguous query (e.g. a street
-    name / house number that exists in several districts: '19 Ngô Gia Tự').
-    Real OpenStreetMap results only (no hallucination), HCMC-only, one per area."""
-    if _names_other_city(text):
-        return []
+    """Multiple DISTINCT real matches for an ambiguous query (e.g. a street name /
+    house number that exists in several districts: '19 Ngô Gia Tự'). Real
+    OpenStreetMap results only (no hallucination), biased to + within the service
+    radius of the pickup, one per area."""
+    center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
+    center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
+    params = {"q": text, "format": "json", "limit": limit,
+              "countrycodes": "vn", "addressdetails": 1}
+    vb = _viewbox(center_lat, center_lng)
+    if vb:
+        params["viewbox"] = vb
     try:
         r = requests.get(
             NOMINATIM_URL,
-            params={"q": f"{text}, Thành phố Hồ Chí Minh", "format": "json",
-                    "limit": limit, "countrycodes": "vn", "viewbox": HCMC_VIEWBOX,
-                    "addressdetails": 1},
+            params=params,
             headers={"User-Agent": "VoiceGo/1.0 (hackathon accessibility demo)"},
             timeout=10,
         )
@@ -157,7 +162,7 @@ def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
             lat, lng = float(it["lat"]), float(it["lon"])
         except (KeyError, TypeError, ValueError):
             continue
-        if not _in_hcmc(lat, lng):
+        if not _within_service(lat, lng, center_lat, center_lng):
             continue
         ad = it.get("address", {}) or {}
         area = (ad.get("suburb") or ad.get("city_district") or ad.get("quarter")
@@ -197,13 +202,14 @@ def _build_prompt(text, user_lat, user_lng, grounded):
 
 
 def resolve_destination(text, user_lat=None, user_lng=None):
-    """Resolve a spoken place name to a real address + coordinates (layered fallback)."""
+    """Resolve a spoken place name to a real address + coordinates (layered fallback).
+    Results are biased to + limited within the service radius of the pickup
+    (user_lat/user_lng), falling back to DEFAULT_CENTER when GPS is unavailable."""
     if not text.strip():
         return {"ok": False, "reason": "empty"}
 
-    # Only HCMC: if the user explicitly names another city, stop here.
-    if _names_other_city(text):
-        return {"ok": False, "reason": "out_of_area"}
+    center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
+    center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
 
     # 0) Local gazetteer FIRST: verified landmarks resolve instantly with trusted
     #    coords — no network call, no rate-limit, and it fixes places public
@@ -212,7 +218,7 @@ def resolve_destination(text, user_lat=None, user_lng=None):
     if hit:
         dist = round(_haversine_km(user_lat, user_lng, hit["lat"], hit["lng"]), 1) if user_lat is not None else None
         return {"ok": True, "name": hit["name"], "address": hit["address"],
-                "province": "Thành phố Hồ Chí Minh", "lat": hit["lat"], "lng": hit["lng"],
+                "province": hit.get("province", ""), "lat": hit["lat"], "lng": hit["lng"],
                 "distanceKm": dist, "confidence": 1.0, "source": "verified", "alternatives": []}
 
     # 1) grounded Gemini (best, real search) if available; 2) Groq plain (fast, no limit).
@@ -224,14 +230,14 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         g = _parse_json(groq_json(_build_prompt(text, user_lat, user_lng, False)))
         via = "groq"
 
-    # 3) No model output at all -> Nominatim directly on the raw text.
+    # 3) No model output at all -> Nominatim directly on the raw text (biased to pickup).
     if not g:
-        coords = _nominatim(f"{text}, Thành phố Hồ Chí Minh, Việt Nam") or _nominatim(text)
+        coords = _nominatim(text, center_lat, center_lng) or _nominatim(f"{text}, Việt Nam")
         if not coords:
             return {"ok": False, "reason": "not_found"}
         lat, lng = coords
-        if not _in_hcmc(lat, lng):
-            return {"ok": False, "reason": "out_of_area"}  # only serve HCMC
+        if not _within_service(lat, lng, center_lat, center_lng):
+            return {"ok": False, "reason": "out_of_area"}  # too far from pickup
         dist = round(_haversine_km(user_lat, user_lng, lat, lng), 1) if user_lat is not None else None
         return {"ok": True, "name": text, "address": text, "province": "", "lat": lat, "lng": lng,
                 "distanceKm": dist, "confidence": 0.4, "source": "nominatim_raw", "alternatives": []}
@@ -245,11 +251,9 @@ def resolve_destination(text, user_lat=None, user_lng=None):
     # The LLM address is tried only after, and the model's own coords last.
     coords = None
     source = "nominatim"
-    for cand in (f"{name}, Thành phố Hồ Chí Minh",
-                 f"{text}, Thành phố Hồ Chí Minh",
-                 address):
+    for cand in (name, text, address):
         if cand and cand.strip():
-            hit = _nominatim_full(cand)
+            hit = _nominatim_full(cand, center_lat, center_lng)
             if hit:
                 coords = (hit[0], hit[1])
                 if hit[2]:
@@ -266,7 +270,7 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         return {"ok": False, "reason": "not_found", "name": name, "address": address}
 
     lat, lng = coords
-    if not _in_hcmc(lat, lng):   # reject anything outside HCMC (e.g. ĐHQG Hà Nội)
+    if not _within_service(lat, lng, center_lat, center_lng):   # too far from pickup to serve
         return {"ok": False, "reason": "out_of_area", "name": name, "address": address}
     confidence = float(g.get("confidence", 0.6))
     if source == "nominatim" and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):

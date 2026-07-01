@@ -19,6 +19,7 @@ export function connectSocket(callbacks = {}) {
   socket.on('disconnect', () => callbacks.onDisconnect?.());
   socket.on('driver-accepted', (data) => callbacks.onDriverAccepted?.(data));
   socket.on('driver-arrived', (data) => callbacks.onDriverArrived?.(data));
+  socket.on('driver-distance', (data) => callbacks.onDriverDistance?.(data));
   socket.on('pin-verified', (data) => callbacks.onPinVerified?.(data));
   socket.on('trip-completed', (data) => callbacks.onTripCompleted?.(data));
   

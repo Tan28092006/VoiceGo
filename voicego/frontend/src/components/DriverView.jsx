@@ -13,6 +13,7 @@ function DriverView({ user }) {
   const [socket, setSocket] = useState(null);
   const [passengerName, setPassengerName] = useState(null);
   const [accessibility, setAccessibility] = useState('');
+  const [distanceM, setDistanceM] = useState(null);   // metres to the (blind) rider
 
   const PIN_LENGTH = 4;
 
@@ -45,9 +46,23 @@ function DriverView({ user }) {
       setStatus("error");
       setTimeout(() => { setInputPin(""); setStatus("input"); }, 1200);
     });
+    // Live distance to the rider (server computes from both GPS positions).
+    newSocket.on("ride-distance", (data) => setDistanceM(Number(data?.meters)));
 
     return () => { newSocket.disconnect(); };
   }, [user.id]);
+
+  // Stream the driver's live GPS so the server can tell both sides how far apart
+  // they are — the "last 10 metres" find-each-other step for a blind rider.
+  useEffect(() => {
+    if (!socket || !navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      (pos) => socket.emit("driver-location", { lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => console.warn("Driver GPS unavailable:", err?.message),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [socket]);
 
   const handleAccept = () => {
     if (socket) { socket.emit("driver-accept", { userId: user.id }); setStatus("accepted"); }
@@ -90,6 +105,10 @@ function DriverView({ user }) {
     setAccessibility("");
   }, []);
 
+  const distLabel = Number.isFinite(distanceM)
+    ? (distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${Math.round(distanceM)} m`)
+    : null;
+
   // ─── Idle / Offered / Accepted ──────────────────────────────────────────
   if (status === "idle" || status === "offered" || status === "accepted") {
     const cfg = {
@@ -110,6 +129,13 @@ function DriverView({ user }) {
           <div className="w-full max-w-md mb-6 px-5 py-4 rounded-2xl bg-grab-yellow/15 border-2 border-grab-yellow/50 text-center animate-fade-in-up">
             <div className="text-grab-yellow font-extrabold text-lg">♿ Chuyến chở người khuyết tật</div>
             <div className="text-white/90 text-sm font-medium mt-1">{accessibility}</div>
+          </div>
+        )}
+        {distLabel && status === "accepted" && (
+          <div className="w-full max-w-md mb-6 px-5 py-4 rounded-2xl bg-grab-green/15 border-2 border-grab-green/50 text-center animate-fade-in-up">
+            <div className="text-gray-300 text-xs uppercase tracking-wider">Khoảng cách tới khách</div>
+            <div className="text-grab-green font-black text-3xl tabular-nums mt-1">{distLabel}</div>
+            <div className="text-white/70 text-xs mt-1">Khách khiếm thị đang đứng yên chờ — điện thoại họ đang phát tín hiệu (đèn + âm thanh)</div>
           </div>
         )}
         {cfg.btn && (
@@ -225,6 +251,12 @@ function DriverView({ user }) {
           <div className="mt-3 px-3 py-2 rounded-xl bg-grab-yellow/15 border border-grab-yellow/40">
             <div className="text-grab-yellow font-bold text-sm">♿ Chuyến chở người khuyết tật</div>
             <div className="text-white/80 text-xs mt-0.5">{accessibility}</div>
+          </div>
+        )}
+        {distLabel && (
+          <div className="mt-3 px-3 py-2 rounded-xl bg-grab-green/15 border border-grab-green/40 flex items-center justify-between">
+            <span className="text-white/80 text-xs">Khoảng cách tới khách</span>
+            <span className="text-grab-green font-black text-lg tabular-nums">{distLabel}</span>
           </div>
         )}
       </div>

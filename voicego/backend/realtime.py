@@ -21,10 +21,21 @@ Khớp đúng "hợp đồng" sự kiện mà frontend đang dùng:
 Trạng thái giữ trong RAM, mô hình 1 chuyến đang chạy tại một thời điểm — vừa đủ cho
 demo hackathon (1 khách + 1 tài xế). Nhiều chuyến song song KHÔNG nằm trong phạm vi.
 """
+import math
 import random
 import socketio
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+
+
+def _haversine_m(lat1, lng1, lat2, lng2):
+    """Distance in METERS between two lat/lng points (for the 'last 10m' UI)."""
+    R = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 # ---- state (1 chuyến đang hoạt động) -------------------------------------
 _drivers: set[str] = set()       # sid của các tài xế đang online
@@ -36,6 +47,15 @@ _DEMO_DRIVERS = [
     {"name": "Anh Minh", "plate": "51-F2 678.90"},
     {"name": "Chị Lan", "plate": "59-X3 112.23"},
 ]
+
+
+def _coords(data):
+    """Pull a {lat,lng} pair out of a socket payload, or None if missing/invalid."""
+    data = data or {}
+    lat, lng = data.get("lat"), data.get("lng")
+    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+        return {"lat": float(lat), "lng": float(lng)}
+    return None
 
 
 def _driver_name(user_id):
@@ -83,11 +103,33 @@ async def passenger_waiting(sid, data):
         "pin": f"{random.randint(0, 9999):04d}",
         "driver_name": drv["name"],
         "plate": drv["plate"],
+        # Rider's pickup GPS — lets the driver see the distance to the (blind)
+        # passenger for the "last 10 metres" find-each-other step. May be None.
+        "passenger_loc": _coords(data),
     })
     # Báo cho mọi tài xế online là có cuốc mới.
     payload = {"accessibility": _trip["accessibility"]}
     for d in list(_drivers):
         await sio.emit("new-ride", payload, to=d)
+
+
+@sio.on("driver-location")
+async def driver_location(sid, data):
+    """Driver's live GPS. Relay the driver↔passenger distance to BOTH sides so
+    the driver screen shows 'cách khách ~X m' and the (blind) passenger's phone
+    tunes its locator beacon (louder/faster as the driver gets closer)."""
+    if not _trip.get("passenger_sid"):
+        return
+    loc = _coords(data)
+    if not loc:
+        return
+    _trip["driver_loc"] = loc
+    ploc = _trip.get("passenger_loc")
+    if not ploc:
+        return
+    meters = round(_haversine_m(loc["lat"], loc["lng"], ploc["lat"], ploc["lng"]))
+    await sio.emit("ride-distance", {"meters": meters}, to=sid)                       # driver
+    await sio.emit("driver-distance", {"meters": meters}, to=_trip["passenger_sid"])  # passenger
 
 
 @sio.on("driver-accept")

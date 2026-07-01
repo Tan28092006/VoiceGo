@@ -4,6 +4,7 @@ import * as api from '../services/api';
 import { speak, stop as stopSpeech, unlockAudio } from '../services/tts';
 import VoiceRecorder from '../services/voiceRecorder';
 import { connectSocket, emitPassengerWaiting, disconnectSocket } from '../services/socket';
+import { startBeacon, stopBeacon, setBeaconIntensity } from '../services/beacon';
 
 // STT engine. TẠM THỜI mặc định FPT.AI (để test trên điện thoại); mở với
 // ?stt=whisper để quay lại Groq Whisper. (Backend: fpt -> FPT trước, Groq fallback.)
@@ -22,6 +23,8 @@ export default function useVoiceApp() {
   const streamRef = useRef(null);       // timer for word-by-word text streaming
   const arrivedRef = useRef(false);     // announce PIN once per trip (guard double events)
   const pausedRef = useRef(false);      // user manually turned the mic OFF -> stop auto-listen
+  const pickupRef = useRef(null);       // rider's live GPS {lat,lng}; null -> backend default
+  const distBucketRef = useRef(null);   // last spoken proximity bucket (avoid TTS spam)
 
   // Latest-value refs so the hands-free loop callbacks can call each other
   // without stale closures.
@@ -31,6 +34,18 @@ export default function useVoiceApp() {
   useEffect(() => { recordingRef.current = state.recording; }, [state.recording]);
   useEffect(() => { messagesRef.current = state.messages; }, [state.messages]);
   useEffect(() => { userRef.current = state.user; }, [state.user]);
+
+  // Grab the rider's real GPS once so pickup = their current location (not a
+  // hardcoded origin). If denied/unavailable, pickupRef stays null and the
+  // backend falls back to its default pickup.
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { pickupRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }; },
+      (err) => { console.warn('Geolocation unavailable, using default pickup:', err?.message); },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  }, []);
 
   // Stream the agent reply word-by-word onto the stage (async, like ChatGPT) so
   // judges see the LLM "typing" while the TTS speaks.
@@ -209,7 +224,7 @@ export default function useVoiceApp() {
       messagesRef.current = newMessages;
       dispatch({ type: 'SET_MESSAGES', payload: newMessages });
 
-      const result = await api.agentChat(newMessages);
+      const result = await api.agentChat(newMessages, pickupRef.current);
       const { reply, messages: updatedMsgs, ui } = result;
       dispatch({ type: 'SET_BACKEND_ONLINE', payload: true });  // confirmed reachable
 
@@ -340,19 +355,43 @@ export default function useVoiceApp() {
         dispatch({ type: 'SET_PIN', payload: pin });
         dispatch({ type: 'SET_DRIVER', payload: { name, plate } });
         if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        // Turn the rider's phone into a locator BEACON (bright strobe + chirp +
+        // buzz) so the sighted driver can find them. The rider stays put in a
+        // safe spot — we never tell a blind rider to walk toward traffic.
+        distBucketRef.current = null;
+        startBeacon();
         const pinStr = pin.split('').join(' ');
         const plateStr = plate.replace(/[^0-9A-Za-zĐđ]/g, '').split('').join(' ');
         // Read the PIN TWICE on purpose (accessibility: visually-impaired riders
         // need to hear it clearly). The driver must still enter it correctly.
-        speak(`Tài xế đã đến nơi đón. Tài xế ${name}, biển số ${plateStr}.`)
+        speak(`Tài xế đã đến gần. Tài xế ${name}, biển số ${plateStr}. Bạn cứ đứng yên ở chỗ an toàn, điện thoại đang phát tín hiệu để tài xế tìm thấy bạn.`)
           .then(() => pin && speak(`Mã PIN của bạn là ${pinStr}.`))
           .then(() => pin && speak(`Nhắc lại, mã PIN của bạn là ${pinStr}. Vui lòng đọc mã này cho tài xế để xác nhận.`));
       },
+      onDriverDistance: (data) => {
+        const meters = Number(data?.meters);
+        if (!Number.isFinite(meters)) return;
+        setBeaconIntensity(meters);   // strobe/chirp faster as the driver nears
+        // Reassurance only (never directional). Announce once per bucket so we
+        // don't spam TTS on every GPS tick.
+        const bucket = meters > 30 ? 'far' : meters > 12 ? 'near' : 'here';
+        if (bucket !== distBucketRef.current) {
+          distBucketRef.current = bucket;
+          const msg = bucket === 'here'
+            ? 'Tài xế đang ở ngay cạnh bạn. Cứ đứng yên, tài xế sẽ tới đón.'
+            : bucket === 'near'
+              ? `Tài xế còn cách bạn khoảng ${meters} mét, đang tới. Bạn đứng yên chỗ an toàn nhé.`
+              : `Tài xế còn cách khoảng ${meters} mét.`;
+          speak(msg);
+        }
+      },
       onPinVerified: () => {
+        stopBeacon();
         dispatch({ type: 'SET_STATE', payload: 'in_progress' });   // -> RideMoving
         speak('Tài xế đã xác nhận đúng mã. Bạn đã lên xe an toàn. Xe đang khởi hành, chúc bạn đi đường bình an!');
       },
       onTripCompleted: () => {
+        stopBeacon();
         dispatch({ type: 'SET_STATE', payload: 'completed' });      // -> RideArrived
         speak('Đã tới nơi, chuyến đi hoàn tất. Bạn có thể đánh giá mức độ tiếp cận của điểm đến để giúp cộng đồng.');
       },
@@ -369,7 +408,9 @@ export default function useVoiceApp() {
       ? `Hành khách ${DISAB[dtype] || 'cần hỗ trợ đặc biệt'} — vui lòng hỗ trợ lên/xuống xe`
       : '';
     const name = userRef.current?.full_name || 'Hành khách';
-    emitPassengerWaiting({ userId, accessibility, name });   // server matches by userId
+    const pk = pickupRef.current || {};
+    // Send pickup GPS so the driver sees the distance to the (blind) rider.
+    emitPassengerWaiting({ userId, accessibility, name, lat: pk.lat, lng: pk.lng });
   }, [dispatch]);
 
   // ---- On mount: greet, then AUTO-OPEN the mic (no button needed) ----
@@ -395,7 +436,7 @@ export default function useVoiceApp() {
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => { disconnectSocket(); stopSpeech(); };
+    return () => { disconnectSocket(); stopSpeech(); stopBeacon(); };
   }, []);
 
   return {
@@ -403,6 +444,6 @@ export default function useVoiceApp() {
     startListening,
     stopListening,
     toggleListening,
-    resetTrip: useCallback(() => { disconnectSocket(); dispatch({ type: 'RESET_TRIP' }); }, [dispatch]),
+    resetTrip: useCallback(() => { stopBeacon(); disconnectSocket(); dispatch({ type: 'RESET_TRIP' }); }, [dispatch]),
   };
 }

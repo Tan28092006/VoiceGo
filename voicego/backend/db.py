@@ -8,6 +8,7 @@ ride_requests, reports, reward_transactions.
 The app can still run without MongoDB during voice/STT demos. Database-backed
 features return a clear "database_unavailable" response instead of crashing.
 """
+import math
 import os
 import uuid
 from datetime import datetime, timezone
@@ -67,6 +68,15 @@ class MongoUnavailable(RuntimeError):
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+
+def _haversine_km(lat1, lng1, lat2, lng2):
+    R = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 def new_id():
@@ -146,6 +156,7 @@ def mongo_status():
             "drivers": db.drivers.count_documents({}),
             "places": db.places.count_documents({}),
             "accessibility_places": db.accessibility_places.count_documents({}),
+            "accessible_gates": db.accessible_gates.count_documents({}),
             "rides": db.ride_requests.count_documents({}),
             "reports": db.reports.count_documents({}),
             "reward_transactions": db.reward_transactions.count_documents({}),
@@ -317,11 +328,55 @@ def seed_demo_data():
             score_count=score_count,
             replace=True,
         )
+
+    # Accessible-gate groups (multi-entrance places with a more accessible gate).
+    # Previously hardcoded in agent.py — now data so more places can be added
+    # without code changes.
+    gate_groups = [
+        {
+            "_id": "gates-bach-khoa-q10",
+            "label": "Đại học Bách Khoa (cơ sở 1, Quận 10)",
+            "center": {"lat": 10.77230, "lng": 106.65770},
+            "radius_km": 0.9,
+            "gates": [
+                {"name": "ĐH Bách Khoa — Cổng 1 (dễ tiếp cận)",
+                 "address": "Cổng 1, ĐH Bách Khoa, 268 Lý Thường Kiệt, Quận 10",
+                 "lat": 10.772085, "lng": 106.657829, "accessible": True},
+                {"name": "ĐH Bách Khoa — Cổng 3",
+                 "address": "Cổng 3, ĐH Bách Khoa, Quận 10",
+                 "lat": 10.773855, "lng": 106.661507, "accessible": False},
+            ],
+        },
+    ]
+    for g in gate_groups:
+        db.accessible_gates.update_one({"_id": g["_id"]}, {"$set": g}, upsert=True)
+
     return mongo_status()
 
 
 def get_accessibility_profile_doc(user_id=DEMO_PASSENGER_ID):
     return get_db().accessibility_profiles.find_one({"user_id": user_id})
+
+
+def find_gate_group(lat, lng):
+    """Return the accessible-gate group whose center is within its radius of
+    (lat, lng), or None. A gate group models a multi-entrance place (e.g. a
+    campus) with a more accessible gate for visually-impaired riders. Degrades
+    to None (feature simply off) when Mongo is unavailable — never raises."""
+    if lat is None or lng is None:
+        return None
+    try:
+        db = get_db()
+    except MongoUnavailable:
+        return None
+    for g in db.accessible_gates.find({}):
+        c = g.get("center") or {}
+        clat, clng = c.get("lat"), c.get("lng")
+        if clat is None or clng is None:
+            continue
+        if _haversine_km(lat, lng, clat, clng) <= float(g.get("radius_km", 0.8)):
+            return serialize_doc(g)
+    return None
 
 
 def get_user(user_id=DEMO_PASSENGER_ID):
