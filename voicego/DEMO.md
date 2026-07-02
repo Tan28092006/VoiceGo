@@ -8,10 +8,7 @@ trợ lý AI lo phần còn lại, và hỗ trợ đặc biệt ở khâu **tìm
 > ## https://voicego.onrender.com
 >
 > Mở được trên **điện thoại lẫn máy tính**. Nên dùng **Chrome trên Android** để có
-> đủ rung + đèn báo. *(Nếu nhóm đã bật Vercel thì thay bằng link Vercel cho nhanh hơn.)*
-
-⏳ **Lần mở đầu có thể chờ ~30 giây** — máy chủ miễn phí (Render) đang "thức dậy".
-App sẽ hiện "đang khởi động", cứ đợi một chút là vào.
+> đủ rung + đèn báo. 
 
 ---
 
