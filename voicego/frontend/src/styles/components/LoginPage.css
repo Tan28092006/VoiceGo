@@ -3,10 +3,15 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
-  gap: var(--space-8);
-  height: 100vh;
+  /* Top-aligned + scrollable: with the demo buttons the content can be taller
+     than the viewport on phones. body has overflow:hidden (app feel), so this
+     container must scroll itself — otherwise the top/bottom get clipped. */
+  justify-content: flex-start;
+  padding: var(--space-8) var(--space-6);
+  gap: var(--space-6);
+  min-height: 100vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;   /* momentum scroll on iOS */
 }
 
 .login-header {
