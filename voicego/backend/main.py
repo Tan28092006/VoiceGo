@@ -126,8 +126,10 @@ def db_response(fn, *args, **kwargs):
         )
 
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():
+    # HEAD too: uptime monitors (UptimeRobot, Render) default to HEAD; a GET-only
+    # route answers HEAD with 405 and the monitor flags the service as down.
     return {"status": "ok", "service": "voicego", "mongo": mongo_status()}
 
 
