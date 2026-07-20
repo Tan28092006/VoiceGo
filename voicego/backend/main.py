@@ -298,7 +298,9 @@ frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
     
-    @app.get("/{full_path:path}")
+    # HEAD cùng lý do như /api/health: monitor trỏ vào "/" sẽ gửi HEAD, route
+    # chỉ nhận GET trả 405 và bị báo down oan dù trang vẫn phục vụ bình thường.
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     def serve_frontend(full_path: str):
         file_path = os.path.join(frontend_dist, full_path)
         if os.path.isfile(file_path):
