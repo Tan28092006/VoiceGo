@@ -32,6 +32,12 @@ GROQ_WHISPER_KEY = os.getenv("GROQ_WHISPER_KEY", "")       # Whisper STT only
 GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")  # full > turbo cho tiếng Việt
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
+# TTS: "fpt" (giọng banmai, cần key + còn quota) | "edge" (Microsoft neural,
+# miễn phí, không cần key). Engine nào hỏng thì tự rơi sang engine kia.
+# Đặt TTS_PRIMARY=edge khi FPT hết quota — khỏi tốn ~1s/lượt gọi FPT rồi mới fallback.
+TTS_PRIMARY = os.getenv("TTS_PRIMARY", "fpt").strip().lower()
+EDGE_VOICE = os.getenv("EDGE_VOICE", "vi-VN-HoaiMyNeural")  # nữ, miền Bắc
+
 ASR_URL = "https://api.fpt.ai/hmi/asr/general"
 TTS_URL = "https://api.fpt.ai/hmi/tts/v5"
 
@@ -106,11 +112,13 @@ def speech_to_text(audio_bytes: bytes) -> dict:
     return {"text": text.strip(), "status": j.get("status"), "raw": j}
 
 
-def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes | None:
+def _fpt_tts(text: str, voice: str = "banmai", speed: str = "") -> bytes | None:
     """
     Call FPT TTS, then download the generated MP3 (FPT returns an async URL that
     becomes ready after ~1s). Returns mp3 bytes or None on failure.
     """
+    if not FPT_API_KEY:
+        return None
     try:
         r = requests.post(
             TTS_URL,
@@ -138,6 +146,47 @@ def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes |
         except Exception:  # noqa: BLE001
             pass
         time.sleep(0.4)
+    return None
+
+
+def _edge_tts(text: str, speed: str = "") -> bytes | None:
+    """
+    Microsoft Edge neural TTS — miễn phí, KHÔNG cần API key, giọng vi-VN tự nhiên.
+    Lưới an toàn khi FPT hết quota: nếu thiếu tầng này, frontend rơi thẳng xuống
+    speechSynthesis của trình duyệt — mà máy tính Windows thường không cài giọng
+    tiếng Việt nên sẽ đọc tiếng Việt bằng giọng Anh, nghe không hiểu được.
+    """
+    try:
+        import asyncio
+        import edge_tts
+    except ImportError:
+        return None
+
+    s = str(speed).strip()
+    rate = f"{int(s):+d}%" if s.lstrip("+-").isdigit() else "+0%"
+
+    async def _collect() -> bytes:
+        buf = bytearray()
+        async for chunk in edge_tts.Communicate(text, EDGE_VOICE, rate=rate).stream():
+            if chunk["type"] == "audio":
+                buf.extend(chunk["data"])
+        return bytes(buf)
+
+    try:
+        # Endpoint này là sync def -> FastAPI chạy nó trong threadpool, không có
+        # event loop sẵn, nên asyncio.run() an toàn.
+        return asyncio.run(_collect()) or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes | None:
+    """Đọc tiếng Việt: thử engine chính trước, hỏng thì rơi sang engine còn lại."""
+    order = ("edge", "fpt") if TTS_PRIMARY == "edge" else ("fpt", "edge")
+    for engine in order:
+        audio = _edge_tts(text, speed) if engine == "edge" else _fpt_tts(text, voice, speed)
+        if audio:
+            return audio
     return None
 
 

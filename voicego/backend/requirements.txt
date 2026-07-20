@@ -4,6 +4,8 @@ pydantic==2.9.0
 python-multipart==0.0.9
 requests==2.32.3
 python-dotenv==1.0.1
+# TTS dự phòng khi FPT hết quota — miễn phí, không cần API key, giọng vi-VN neural.
+edge-tts>=6.1.9
 openai>=1.40.0
 pymongo>=4.7.0
 # Optional: real web-search grounding for geocoding (else Groq + Nominatim).
