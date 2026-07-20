@@ -5,7 +5,7 @@ trợ lý AI lo phần còn lại, và hỗ trợ đặc biệt ở khâu **tìm
 
 ## 🔗 Link demo (bấm là chạy, không cần cài gì)
 
-> ## https://voicego.onrender.com
+> ## https://voicego-oyos.onrender.com
 >
 > Mở được trên **điện thoại lẫn máy tính**. Nên dùng **Chrome trên Android** để có
 > đủ rung + đèn báo. 

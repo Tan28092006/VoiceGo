@@ -47,12 +47,64 @@ Người xem ──▶ Vercel (CDN, React)  ──HTTPS──▶  Render (FastAP
    curl -X POST https://voicego-api.onrender.com/api/db/seed
    ```
 
-## Bước 3 — Giữ backend luôn thức (chống cold-start) ⭐
-1. https://uptimerobot.com (free) → **Add New Monitor**.
-   - Type: **HTTP(s)**
-   - URL: `https://voicego-api.onrender.com/api/health`
-   - Interval: **5 minutes**
-2. Xong. Render free có 750 giờ/tháng ≈ đủ để 1 service chạy 24/7 → không còn ngủ.
+## Bước 3 — Giữ backend thức ĐÚNG LÚC CẦN (chống cold-start) ⭐
+
+> ⚠️ **ĐỌC KỸ TRƯỚC KHI DỰNG MONITOR — đây là chỗ đã làm sập service ngày 19/7/2026.**
+>
+> Render free cho **750 giờ instance/tháng, tính chung cả tài khoản**, và reset theo
+> **chu kỳ thanh toán của tài khoản** (không phải ngày 1 hàng tháng).
+> Một service chạy 24/7 suốt tháng 31 ngày tốn **744 giờ** → biên an toàn chỉ **6 giờ**.
+> Mỗi lần deploy lại đều tốn thêm giờ (instance mới chạy song song lúc chuyển giao).
+> Ping 5 phút/lần = service **không bao giờ ngủ** = chắc chắn cháy quota, chỉ là sớm hay muộn.
+> Khi cháy: Render treo service (`Suspended by Free Tier Usage Exceeded`), trả **503**
+> với header `x-render-routing: suspend`, và **không tự bật lại cho tới đầu chu kỳ sau**.
+
+Chọn 1 trong 3 cách, theo thứ tự khuyến nghị:
+
+**Cách A — Ping có lịch (free, an toàn, khuyến nghị).**
+Dựng monitor như dưới nhưng **chỉ bật trong khung giờ cần demo** (UptimeRobot cho phép
+tạm dừng monitor; cron-job.org cho phép đặt lịch theo giờ). Ping 12 giờ/ngày ≈ **372 giờ/tháng**
+→ dư gấp đôi quota. Ngoài khung giờ đó service ngủ, người xem chịu cold-start ~50s
+(frontend đã có warm-up ping + thông báo "đang khởi động" nên không trông như lỗi).
+   - Type: **HTTP(s)** · URL: `https://voicego-api.onrender.com/api/health` · Interval: **5 minutes**
+
+**Cách B — Không ping gì cả.** Service ngủ sau 15' không dùng, quota gần như không bao giờ
+chạm trần. Đổi lại request đầu tiên mất ~50s. Phù hợp giai đoạn không có deadline.
+
+**Cách C — Nâng gói Starter (~7 USD/tháng).** Không giới hạn giờ, không ngủ, **giữ nguyên URL**.
+Đây là lựa chọn rẻ nhất về công sức nếu đang sát hạn nộp bài — không phải đổi link,
+không phải khai báo lại biến môi trường, không phải test lại.
+
+**Tuyệt đối tránh:** ping 24/7 trên gói free. Nó chỉ hoạt động cho tới khi hết quota rồi
+sập đúng lúc không ai ngờ.
+
+---
+
+## 🚨 Khi service đã bị suspend — làm gì
+
+1. **Xác nhận đúng bệnh:** `curl -sI https://<url> | grep x-render-routing`
+   → ra `suspend` nghĩa là Render chặn từ tầng định tuyến, app không hề crash.
+   Dashboard → tab **Events** sẽ ghi rõ lý do (vd `Suspended by Free Tier Usage Exceeded`).
+2. **Nếu do hết quota:** nút Resume sẽ không ăn cho tới khi sang chu kỳ mới.
+   Muốn có link chạy ngay thì phải nâng gói (Cách C) hoặc deploy sang nơi khác (mục dưới).
+3. **Sau khi khôi phục, đổi ngay monitor sang Cách A** — nếu không sẽ lặp lại y hệt sau ~1 tháng.
+4. **Kiểm tra lại bằng giọng nói thật, đừng chỉ xem trang chủ có lên không.** Toàn bộ biến
+   môi trường đều có mặc định rỗng (`voice.py`, `db.py`), nên thiếu key thì app vẫn khởi động
+   bình thường nhưng **câm** — mở được trang mà nói không ra gì.
+
+### Phương án dự phòng: deploy nơi khác trong ~10 phút
+`voicego/Dockerfile` đã gói sẵn cả frontend lẫn backend và chỉ phụ thuộc biến `$PORT`,
+nên bê nguyên sang chỗ khác được, không sửa code:
+
+| Nền tảng | Cách làm | Lưu ý |
+|---|---|---|
+| **Railway** | New Project → Deploy from GitHub → tự nhận Dockerfile | Nhanh nhất, free tier tính theo mức dùng |
+| **Google Cloud Run** | `gcloud run deploy --source voicego` | Free tier rộng, không ngủ đông, cần tài khoản GCP |
+| **Fly.io** | `fly launch --dockerfile voicego/Dockerfile` | Cần thẻ để xác minh |
+
+Nhớ khai báo lại **toàn bộ** biến môi trường ở Bước 2, chạy lại lệnh seed ở Bước 2.5,
+rồi cập nhật `VITE_BACKEND_URL` trên Vercel (**phải Redeploy** vì Vite nhúng biến lúc build)
+và sửa link trong `DEMO.md`.
 
 ## Bước 4 — Frontend lên Vercel (free)
 1. https://vercel.com → **Add New → Project** → chọn repo.
