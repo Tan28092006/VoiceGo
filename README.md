@@ -1,3 +1,18 @@
+# VoiceGo — Voice-first ride-hailing for visually impaired users
+
+## 🔗 Live demo
+
+> ### https://voicego-9k11.onrender.com
+>
+> Runs in the browser on both phone and desktop — nothing to install.
+> Best on **Chrome for Android** (full vibration + screen-flash beacon support).
+> Allow **Microphone** and **Location** when prompted, then just say where you want to go.
+>
+> Step-by-step walkthrough: [voicego/DEMO.md](voicego/DEMO.md) ·
+> Architecture: [voicego/ARCHITECTURE.md](voicego/ARCHITECTURE.md)
+
+---
+
 # Problem Statement
 
 ## Context
