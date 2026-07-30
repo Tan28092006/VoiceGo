@@ -6,9 +6,10 @@
 # Render Free ngủ sau 15 phút không có traffic, request đầu tiên chờ ~1 phút.
 # Script này chịu cái chờ đó THAY CHO ban giám khảo.
 #
-# CỐ TÌNH không phải uptime monitor: chạy một lần rồi thoát. Quota Free là
-# 750 giờ/tháng mà tháng 31 ngày có 744 giờ -> ping 24/7 là CHẮC CHẮN vượt
-# quota và bị suspend (đã dính 2 lần). Chạy trước giờ chấm ~5 phút, thế là đủ.
+# Chạy một lần rồi thoát, không phải uptime monitor -- vì thường chỉ cần đánh
+# thức trước buổi demo là đủ. (Quota Free 750h/tháng tính cho CẢ WORKSPACE:
+# 1 service thức cả tháng chỉ tốn 744h nên vẫn vừa, nhưng 2 service free cùng
+# thức là 1488h -> cháy quota giữa tháng. Xem DEPLOY_DOMAIN.md Phần A.)
 
 set -u
 BASE="${1:-https://voicego.res3pl.com}"

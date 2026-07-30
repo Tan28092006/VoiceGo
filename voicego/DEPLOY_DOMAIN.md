@@ -33,17 +33,21 @@ Dùng `voicego/Dockerfile` (đóng gói sẵn frontend + backend, chỉ cần `$
 2. Điền biến môi trường (xem **Phần B**).
 3. Custom domain + TLS quản lý sẵn **có ở cả gói Free** → làm Phần C1 là xong.
 
-**Chuyện quota, nói cho hết — đây là gốc của 2 lần bị treo:**
+**Chuyện quota, tính cho đúng:**
 
-- Free được **750 giờ/tháng**, mà tháng 31 ngày có **744 giờ**. Nghĩa là **giữ service thức
-  24/7 thì chắc chắn vượt quota** — không phải "ping nhiều mới hết".
-- Cơ chế **ngủ sau 15 phút không có traffic chính là thứ giữ bạn dưới hạn mức**. Đừng chống nó.
-  Cắm uptime monitor 24/7 = tự đốt quota, và đó đúng là thứ đã gây suspend cả 2 lần.
-- 750 giờ tính **cho cả workspace**, không phải từng service. Còn service free nào khác đang
-  chạy trong workspace thì nó **ăn chung quota** → xoá/suspend hết những cái không dùng.
-- Đánh đổi phải chấp nhận: service ngủ thì request đầu tiên **chờ ~1 phút**. Cách chữa cho
-  buổi chấm: **ping làm nóng trước và chỉ trong khung giờ BTC chấm**, xong thì tắt ping.
-  Đừng để monitor sống qua đêm.
+- Free được **750 giờ/tháng**, tháng 31 ngày có **744 giờ** → **một** service thức 24/7 cả
+  tháng vẫn **vừa đủ trong quota**, dư 6 giờ. Mỏng, nhưng không phải "chắc chắn vượt".
+- **750 giờ tính cho CẢ WORKSPACE, không phải từng service.** Đây mới là gốc của 2 lần bị
+  treo: **2 service free thức 24/7 = 1488 giờ → cháy quota giữa tháng.** Trước khi nghi ngờ
+  uptime monitor, hãy vào **Billing → Usage** đếm xem có bao nhiêu service free đang chạy,
+  rồi xoá/pause hết những cái không dùng.
+- Suy ra: chỉ cần đúng **1 service free** thì ping làm nóng **không** làm cháy quota. Cứ ping
+  trong giai đoạn chấm cho an toàn (ví dụ 1/8→11/8 = 11 ngày = **264/750 giờ**, dư xa).
+- Quota **reset theo tháng dương lịch**, ngày 1. Hết quota giữa tháng thì ở gói Free không có
+  cách gỡ — chờ mùng 1, nâng Starter, hoặc dựng ở workspace khác.
+- Service ngủ sau 15 phút không traffic → request đầu tiên **chờ ~1 phút**. Chạy
+  `warmup.sh` trước buổi demo để mình chịu cái chờ đó thay ban giám khảo.
+- Xong đợt demo thì **pause service** để dành quota cho lần demo lại.
 
 Muốn khỏi ngủ và khỏi lo quota → **Starter (~7 USD/tháng)**.
 
@@ -179,8 +183,8 @@ Kiểm tra thêm bằng tay:
 
 | Triệu chứng | Nguyên nhân | Cách xử lý |
 |---|---|---|
-| `This service has been suspended` / 503 `x-render-routing: suspend` | Render Free hết 750h — thường do **uptime monitor ping 24/7** đốt sạch quota (744h/tháng > 750h thì thức 24/7 là chắc chắn vượt) | Đừng ping 24/7; chỉ ping trong khung giờ demo; xoá service free khác trong workspace (ăn chung quota); hoặc nâng Starter |
-| Lần đầu vào chờ ~1 phút rồi mới lên | Render Free ngủ sau 15 phút không có traffic — **bình thường**, đây là thứ giữ bạn dưới 750h | Ping làm nóng trước giờ chấm, xong tắt ping |
+| `This service has been suspended` / 503 `x-render-routing: suspend` | Hết 750h — **thường do nhiều service free trong cùng workspace ăn chung quota** (1 service thức cả tháng chỉ tốn 744h, vẫn vừa; 2 cái là 1488h → cháy) | Billing → Usage đếm service free, **xoá/pause hết cái không dùng**; chờ mùng 1 quota reset; hoặc nâng Starter |
+| Lần đầu vào chờ ~1 phút rồi mới lên | Render Free ngủ sau 15 phút không có traffic — **bình thường** | Chạy `warmup.sh` trước buổi demo |
 | SDK Docker trên HF hiện 🔒 *Paid* | Docker Spaces cần PRO/credits; **gắn thẻ không mở khoá** (đã thử) | Dùng Render; đừng nạp credits để thử |
 | `ERR_TOO_MANY_REDIRECTS` | Cloudflare proxy (cam) + SSL mode **Flexible** | Đổi SSL/TLS sang **Full (strict)** |
 | Trang lên nhưng **bấm nói không ra gì** | Thiếu `DEEPSEEK_API_KEY` / `GROQ_WHISPER_KEY` — app vẫn khởi động | Khai đủ secret; chạy `smoke_test.sh` |
