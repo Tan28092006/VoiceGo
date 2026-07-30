@@ -19,7 +19,7 @@ import math
 
 import requests
 
-from voice import GEMINI_API_KEY, GEMINI_MODEL, groq_json
+from voice import GEMINI_API_KEY, GEMINI_MODEL, llm_json
 from places_db import lookup as _local_lookup
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
@@ -227,7 +227,7 @@ def resolve_destination(text, user_lat=None, user_lng=None):
     if GEMINI_API_KEY:
         g = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, True), grounded=True, retries=1))
     if not g:
-        g = _parse_json(groq_json(_build_prompt(text, user_lat, user_lng, False)))
+        g = _parse_json(llm_json(_build_prompt(text, user_lat, user_lng, False)))
         via = "groq"
 
     # 3) No model output at all -> Nominatim directly on the raw text (biased to pickup).

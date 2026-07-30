@@ -24,13 +24,19 @@ FPT_API_KEY = os.getenv("FPT_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-# Groq (OpenAI-compatible). Separate keys so Whisper STT has its own quota.
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")               # LLM (agent + geocode)
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")  # smart agent brain
-GROQ_GEOCODE_MODEL = os.getenv("GROQ_GEOCODE_MODEL", "llama-3.1-8b-instant")  # cheap
-GROQ_WHISPER_KEY = os.getenv("GROQ_WHISPER_KEY", "")       # Whisper STT only
+# ── LLM hội thoại + geocode (OpenAI-compatible) ──────────────────────────────
+# Mặc định DeepSeek. Muốn đổi nhà cung cấp: set LLM_BASE_URL + LLM_MODEL + key.
+# Để quay lại Groq: LLM_API_KEY=<groq key>, LLM_BASE_URL=https://api.groq.com/openai/v1,
+# LLM_MODEL=openai/gpt-oss-120b.
+LLM_API_KEY = os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")          # bộ não agent
+LLM_GEOCODE_MODEL = os.getenv("LLM_GEOCODE_MODEL", "deepseek-chat")  # geocode fallback
+
+# ── Whisper STT — GIỮ trên Groq (DeepSeek không nhận dạng giọng nói) ──────────
+GROQ_WHISPER_KEY = os.getenv("GROQ_WHISPER_KEY", "")
 GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")  # full > turbo cho tiếng Việt
-GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"            # chỉ dùng cho Whisper STT
 
 # TTS: "fpt" (giọng banmai, cần key + còn quota) | "edge" (Microsoft neural,
 # miễn phí, không cần key). Engine nào hỏng thì tự rơi sang engine kia.
@@ -42,25 +48,25 @@ ASR_URL = "https://api.fpt.ai/hmi/asr/general"
 TTS_URL = "https://api.fpt.ai/hmi/tts/v5"
 
 
-def groq_client():
-    """OpenAI client pointed at Groq (LLM key), or None if no key/SDK."""
-    if not GROQ_API_KEY:
+def llm_client():
+    """OpenAI-compatible client cho LLM hội thoại (DeepSeek mặc định), None nếu thiếu key/SDK."""
+    if not LLM_API_KEY:
         return None
     try:
         from openai import OpenAI
     except ImportError:
         return None
-    return OpenAI(base_url=GROQ_BASE_URL, api_key=GROQ_API_KEY)
+    return OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 
 
-def groq_json(prompt: str) -> str | None:
-    """One-shot completion on the CHEAP model (geocode no-grounding fallback)."""
-    client = groq_client()
+def llm_json(prompt: str) -> str | None:
+    """One-shot completion cho geocode no-grounding fallback."""
+    client = llm_client()
     if not client:
         return None
     try:
         r = client.chat.completions.create(
-            model=GROQ_GEOCODE_MODEL,
+            model=LLM_GEOCODE_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
         )

@@ -17,7 +17,7 @@ import re
 import time
 import unicodedata
 
-from voice import groq_client, GROQ_MODEL
+from voice import llm_client, LLM_MODEL
 from geocode import resolve_destination, geocode_candidates, _nominatim, _haversine_km
 from places_db import lookup_all as _lookup_all
 from routing import road_route
@@ -374,12 +374,12 @@ def _apply_place_ui(ui, res):
 
 
 def _chat_create(client, msgs):
-    """Call Groq; auto-retry on 429 rate limit (TPM resets within seconds)."""
+    """Gọi LLM; auto-retry khi bị 429 rate limit (reset sau vài giây)."""
     last = None
     for _ in range(4):
         try:
             return client.chat.completions.create(
-                model=GROQ_MODEL, messages=msgs, tools=TOOLS, tool_choice="auto", temperature=0.3,
+                model=LLM_MODEL, messages=msgs, tools=TOOLS, tool_choice="auto", temperature=0.3,
             )
         except Exception as e:  # noqa: BLE001
             last = e
@@ -396,9 +396,9 @@ def _chat_create(client, msgs):
 def run_agent(messages: list[dict], pickup: dict | None = None) -> dict:
     """One agent turn. Returns {reply, messages, ui}. `pickup` is the rider's live
     GPS ({lat,lng[,name]}); falls back to DEFAULT_PICKUP when unavailable."""
-    client = groq_client()
+    client = llm_client()
     if not client:
-        return {"reply": "Hệ thống agent chưa sẵn sàng (thiếu GROQ_API_KEY).", "messages": messages, "ui": {}}
+        return {"reply": "Hệ thống agent chưa sẵn sàng (thiếu DEEPSEEK_API_KEY).", "messages": messages, "ui": {}}
 
     pk = _pickup(pickup)
     msgs = list(messages)
