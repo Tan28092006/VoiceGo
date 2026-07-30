@@ -1,31 +1,51 @@
-# Render Blueprint — deploy 1 service (Docker) miễn phí.
-# Render Dashboard -> New -> Blueprint -> trỏ vào repo. Điền các secret bên dưới.
+# Render Blueprint — dựng lại service VoiceGo bằng 1 cú click.
+#
+#   Render Dashboard -> New -> Blueprint -> trỏ vào repo này -> Apply.
+#
+# Blueprint khai sẵn custom domain, health check và mọi biến môi trường, nên khi
+# service cũ bị treo/xoá thì chỉ còn phải dán lại 3 secret (xem `sync: false`).
+# Xem RECOVERY.md để biết quy trình khôi phục đầy đủ trong ~10 phút.
 services:
   - type: web
     name: voicego
     runtime: docker
-    plan: free
+    plan: free                             # đổi thành `starter` nếu muốn không ngủ + không lo quota 750h
     dockerfilePath: ./voicego/Dockerfile   # đổi nếu repo của bạn đặt Dockerfile ở chỗ khác
     dockerContext: ./voicego
     healthCheckPath: /api/health
+    autoDeployTrigger: commit              # push lên main là tự deploy
+
+    # Khai luôn domain ở đây -> dựng lại service là domain tự gắn, không phải
+    # vào Settings bấm tay. Trên Cloudflare vẫn phải sửa CNAME sang đích
+    # *.onrender.com mới (service mới = subdomain mới). Xem DEPLOY_DOMAIN.md C1.
+    domains:
+      - voicego.res3pl.com
+
     envVars:
+      # ── Phải dán tay (sync: false = Render hỏi khi Apply, không nằm trong git) ──
+      - key: DEEPSEEK_API_KEY   # LLM cho agent + geocode. THIẾU CÁI NÀY = app lên xanh nhưng agent câm.
+        sync: false
+      - key: GROQ_WHISPER_KEY   # Whisper STT (giữ trên Groq — DeepSeek không nhận giọng nói)
+        sync: false
       - key: MONGODB_URI        # chuỗi kết nối MongoDB Atlas (mongodb+srv://...)
         sync: false
+
+      # ── Tuỳ chọn, để trống cũng chạy ──
+      - key: FPT_API_KEY        # TTS tiếng Việt; hết quota vẫn chạy nhờ edge-tts
+        sync: false
+      - key: GEMINI_API_KEY     # grounding cho geocode, bỏ trống được
+        sync: false
+
+      # ── Có giá trị mặc định, không phải nhập ──
+      - key: TTS_PRIMARY
+        value: edge             # dùng thẳng edge-tts (miễn phí, không cần key) làm giọng chính
       - key: MONGODB_DB
         value: voicego
-      - key: GROQ_API_KEY       # LLM cho agent
-        sync: false
-      - key: GROQ_MODEL
-        value: openai/gpt-oss-120b
-      - key: GROQ_GEOCODE_MODEL
-        value: llama-3.1-8b-instant
-      - key: GROQ_WHISPER_KEY   # STT Whisper
-        sync: false
+      - key: LLM_MODEL
+        value: deepseek-chat
+      - key: LLM_GEOCODE_MODEL
+        value: deepseek-chat
       - key: GROQ_WHISPER_MODEL
-        value: whisper-large-v3
-      - key: FPT_API_KEY        # STT/TTS tiếng Việt
-        sync: false
-      - key: GEMINI_API_KEY     # tuỳ chọn (để trống cũng được)
-        sync: false
+        value: whisper-large-v3 # bản full nhận tiếng Việt tốt hơn turbo
       - key: GEMINI_MODEL
         value: gemini-2.5-flash

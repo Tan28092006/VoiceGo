@@ -1,7 +1,9 @@
 # Secrets — NEVER commit API keys
 .env
 *.env
+.env.*          # .env.production (két secret để deploy lại nhanh) KHÔNG khớp 2 dòng trên
 !*.env.example
+!.env.example
 
 # Python
 __pycache__/
