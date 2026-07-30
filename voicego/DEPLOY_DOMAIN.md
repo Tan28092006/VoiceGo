@@ -19,26 +19,71 @@ Người xem ──▶ voicego.res3pl.com (DNS Cloudflare) ──▶ Backend (Re
 
 ## Phần A — Deploy backend (chọn 1 host)
 
-Cả hai đều dùng chung `voicego/Dockerfile` (đóng gói sẵn frontend + backend, chỉ cần `$PORT`).
+> **Chốt (7/2026): Render Free.** HF Spaces đã hết miễn phí (xem Lựa chọn 2), các host free
+> khác đều đòi thẻ hoặc không cho custom domain. Đọc kỹ mục quota bên dưới — đó là thứ đã
+> làm treo service 2 lần.
 
-### Lựa chọn 1 — Render (custom domain sạch nhất, khuyến nghị nếu chịu chi $7)
+Dùng `voicego/Dockerfile` (đóng gói sẵn frontend + backend, chỉ cần `$PORT`).
+
+### Lựa chọn 1 — Render ✅ ĐANG DÙNG
 
 1. Dashboard Render → **New → Web Service** (hoặc **Blueprint** trỏ `render.yaml`).
    - Runtime **Docker** · Dockerfile Path `./voicego/Dockerfile` · Context `./voicego`
    - Health Check Path: `/api/health`
 2. Điền biến môi trường (xem **Phần B**).
-3. ⚠️ **Gói Free bị treo khi hết 750 giờ/tháng** (đã dính 2 lần). Muốn link luôn sống cho
-   BTC chấm → nâng **Starter (~7 USD/tháng)**. Nếu giữ Free thì **đừng ping 24/7** (xem Phần E).
+3. Custom domain + TLS quản lý sẵn **có ở cả gói Free** → làm Phần C1 là xong.
 
-### Lựa chọn 2 — Hugging Face Spaces (free, không cần thẻ)
+**Chuyện quota, nói cho hết — đây là gốc của 2 lần bị treo:**
 
-Xem chi tiết trong [README.md](README.md) (đã có metadata `sdk: docker`, `app_port: 8000`).
-Tóm tắt: tạo Space Docker → `git subtree split --prefix voicego -b hf-deploy` →
-`git push --force <hf-remote> hf-deploy:main` → khai secret ở Settings.
-URL app: `https://<user>-voicego.hf.space`.
+- Free được **750 giờ/tháng**, mà tháng 31 ngày có **744 giờ**. Nghĩa là **giữ service thức
+  24/7 thì chắc chắn vượt quota** — không phải "ping nhiều mới hết".
+- Cơ chế **ngủ sau 15 phút không có traffic chính là thứ giữ bạn dưới hạn mức**. Đừng chống nó.
+  Cắm uptime monitor 24/7 = tự đốt quota, và đó đúng là thứ đã gây suspend cả 2 lần.
+- 750 giờ tính **cho cả workspace**, không phải từng service. Còn service free nào khác đang
+  chạy trong workspace thì nó **ăn chung quota** → xoá/suspend hết những cái không dùng.
+- Đánh đổi phải chấp nhận: service ngủ thì request đầu tiên **chờ ~1 phút**. Cách chữa cho
+  buổi chấm: **ping làm nóng trước và chỉ trong khung giờ BTC chấm**, xong thì tắt ping.
+  Đừng để monitor sống qua đêm.
 
-> HF **không hỗ trợ custom domain trực tiếp** → phải dùng Cloudflare proxy + Origin Rule
-> (Phần C, mục C2). Fiddly hơn Render nhưng miễn phí.
+Muốn khỏi ngủ và khỏi lo quota → **Starter (~7 USD/tháng)**.
+
+### Lựa chọn 2 — Hugging Face Spaces — ❌ KHÔNG CÒN MIỄN PHÍ (7/2026)
+
+**Docker Spaces giờ cần gói trả phí** (PRO **9 USD/tháng** cho tài khoản cá nhân). Trang
+tạo Space hiện nhãn 🔒 *Paid* trên SDK Docker: *"Add billing to your account (credits or
+subscribe to PRO) to unlock Docker Spaces"*. Đây là chính sách chung, không phải lỗi tài khoản.
+
+**Đã thử, đừng thử lại:** gắn payment method vào Settings → Billing → Payment information
+**KHÔNG mở khoá** Docker (thẻ vào rồi mà nhãn 🔒 *Paid* vẫn còn). Cửa này xét **có PRO hoặc
+có số dư credits**, không xét có thẻ. Cũng **đừng nạp credits để thử**: popover credits liệt kê
+6 thứ nó dùng được (Jobs, Inference Providers, Inference Endpoints, GPU Spaces, ZeroGPU,
+Private Storage) mà **không có Docker Spaces** → nạp xong vẫn có thể khoá, tiền thì đã đi.
+Hardware **CPU Basic vẫn là $0/giờ**, nên nếu có PRO thì Space không phát sinh phí giờ máy.
+
+> **Nếu vẫn định chi tiền thì chọn Render Starter (7 USD) chứ đừng HF PRO (9 USD):** đắt hơn
+> mà lại nhận đúng phần fiddly — HF không cấp cert cho domain riêng nên buộc phải proxy
+> Cloudflare + Origin Rule (C2), còn Render chỉ cần CNAME xám (C1).
+
+Repo vẫn giữ metadata `sdk: docker` trong [README.md](README.md) và branch deploy tạo bằng
+`git subtree split --prefix voicego -b hf-deploy` → `git push --force <hf-remote> hf-deploy:main`,
+để dùng lại ngay nếu sau này có PRO.
+
+**Đừng lách bằng Space Gradio SDK** (tier này chưa khoá, và về lý thuyết `app.py` chạy uvicorn
+serve `socket_app` trên cổng 7860 là được): Space Gradio **không có Node** nên phải commit sẵn
+`frontend/dist`, cách dùng này HF không hỗ trợ chính thức, và bản chất là lách đúng cái paywall
+họ vừa dựng → Space có thể bị gỡ ngay giữa lúc chấm. Không đáng.
+
+### Các host free khác — đã khảo sát, đều loại
+
+| Host | Vướng ở đâu |
+|---|---|
+| Koyeb | FAQ giá của chính Koyeb: free tier **vẫn đòi thẻ**; custom domain chỉ từ gói **Pro** |
+| Fly.io / Google Cloud Run / Oracle Cloud | đều bắt buộc thẻ |
+| GitHub Pages | **chỉ phục vụ file tĩnh, không có runtime** — không chạy được tiến trình FastAPI/Socket.IO |
+| GitHub Actions | job sống tối đa 6 tiếng, không có URL public nhận request vào — không phải host |
+
+> Nhắc lại cho khỏi lạc: **Docker không bắt buộc**, app chỉ cần một host **chạy được tiến trình
+> server**. Doc chọn Docker vì nó gói luôn bước build React vào một image.
 
 ---
 
@@ -134,7 +179,9 @@ Kiểm tra thêm bằng tay:
 
 | Triệu chứng | Nguyên nhân | Cách xử lý |
 |---|---|---|
-| `This service has been suspended` / 503 `x-render-routing: suspend` | Render Free hết 750h — thường do **uptime monitor ping 24/7** đốt sạch quota | Đừng ping 24/7; chỉ ping trong khung giờ demo, hoặc nâng Starter |
+| `This service has been suspended` / 503 `x-render-routing: suspend` | Render Free hết 750h — thường do **uptime monitor ping 24/7** đốt sạch quota (744h/tháng > 750h thì thức 24/7 là chắc chắn vượt) | Đừng ping 24/7; chỉ ping trong khung giờ demo; xoá service free khác trong workspace (ăn chung quota); hoặc nâng Starter |
+| Lần đầu vào chờ ~1 phút rồi mới lên | Render Free ngủ sau 15 phút không có traffic — **bình thường**, đây là thứ giữ bạn dưới 750h | Ping làm nóng trước giờ chấm, xong tắt ping |
+| SDK Docker trên HF hiện 🔒 *Paid* | Docker Spaces cần PRO/credits; **gắn thẻ không mở khoá** (đã thử) | Dùng Render; đừng nạp credits để thử |
 | `ERR_TOO_MANY_REDIRECTS` | Cloudflare proxy (cam) + SSL mode **Flexible** | Đổi SSL/TLS sang **Full (strict)** |
 | Trang lên nhưng **bấm nói không ra gì** | Thiếu `DEEPSEEK_API_KEY` / `GROQ_WHISPER_KEY` — app vẫn khởi động | Khai đủ secret; chạy `smoke_test.sh` |
 | Giọng đọc bằng giọng Tây / câm | FPT hết quota, chưa bật edge-tts | Đặt `TTS_PRIMARY=edge` |
@@ -145,5 +192,7 @@ Kiểm tra thêm bằng tay:
 
 ## Ghi nhớ 1 dòng
 
-> Deploy backend (Render/HF) → khai `DEEPSEEK_API_KEY` + `GROQ_WHISPER_KEY` + `MONGODB_URI` →
-> CNAME `voicego` trên Cloudflare (Render: xám; HF: cam + Origin Rule) → `smoke_test.sh` 4/4 → gửi BTC.
+> Deploy Docker lên **Render Free** → khai `DEEPSEEK_API_KEY` + `GROQ_WHISPER_KEY` + `MONGODB_URI`
+> → Add Custom Domain `voicego.res3pl.com` → CNAME `voicego` trên Cloudflare **DNS only (xám)**
+> → đợi "Certificate Issued" → `smoke_test.sh` 4/4 → gửi BTC.
+> **Và đừng cắm uptime monitor 24/7** — đó là thứ đã treo service 2 lần.
