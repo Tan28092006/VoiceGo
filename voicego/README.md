@@ -23,8 +23,8 @@ React đã build — mọi thứ cùng một origin. Xem thêm `ARCHITECTURE.md`
 | Key | Bắt buộc | Ghi chú |
 |---|---|---|
 | `MONGODB_URI` | ✅ | Chuỗi kết nối MongoDB Atlas |
-| `GROQ_API_KEY` | ✅ | LLM cho agent hội thoại |
-| `GROQ_WHISPER_KEY` | ✅ | STT Whisper (dự phòng) |
+| `DEEPSEEK_API_KEY` | ✅ | LLM cho agent hội thoại + geocode |
+| `GROQ_WHISPER_KEY` | ✅ | STT Whisper (DeepSeek không nhận giọng nói) |
 | `FPT_API_KEY` | ⬜ | STT/TTS tiếng Việt (hết quota vẫn chạy nhờ edge-tts) |
 | `TTS_PRIMARY` | ⬜ | Đặt `edge` để dùng thẳng edge-tts (miễn phí) làm giọng chính |
 | `GEMINI_API_KEY` | ⬜ | Tuỳ chọn, để trống cũng được |

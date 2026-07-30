@@ -7,7 +7,7 @@
 # rỗng, nên thiếu key thì server vẫn khởi động bình thường mà giọng nói không hoạt động.
 
 set -u
-BASE="${1:-https://voicego.onrender.com}"
+BASE="${1:-https://voicego.res3pl.com}"
 PASS=0; FAIL=0
 
 check() { # tên | mã mong đợi | đường dẫn
@@ -70,7 +70,7 @@ reply=$(curl -s --max-time 180 -X POST "$BASE/api/agent/chat" \
 if echo "$reply" | grep -qi 'bến thành'; then
   echo "  OK    agent nhận ra điểm đến"; PASS=$((PASS+1))
 else
-  echo "  LỖI   agent không phản hồi đúng — kiểm tra GROQ_API_KEY / MONGODB_URI"; FAIL=$((FAIL+1))
+  echo "  LỖI   agent không phản hồi đúng — kiểm tra DEEPSEEK_API_KEY / MONGODB_URI"; FAIL=$((FAIL+1))
   echo "        trả về: $(echo "$reply" | head -c 300)"; FAIL=$((FAIL))
 fi
 
