@@ -47,6 +47,9 @@ curl -sI https://voicego.res3pl.com | grep -i 'x-render-routing\|^HTTP'
 | Không resolve / lỗi DNS | Bản ghi CNAME sai | Kịch bản D |
 | Cảnh báo chứng chỉ | Cert chưa cấp / proxy sai | Kịch bản E |
 
+> **Sắp tới giờ chấm mà A–E đều không kịp?** Nhảy thẳng xuống **Kịch bản F** (Cloudflare
+> Tunnel từ máy mình) — không cần tài khoản, không cần thẻ, không đợi quota, ~2 phút là sống.
+
 ---
 
 ## Kịch bản A — Bị suspend vì hết 750 giờ
@@ -100,6 +103,73 @@ Chạy trước ~5 phút, xong **tắt đi**. Đừng cắm monitor 24/7.
 - **E:** Render → Settings → Custom Domains phải báo **"Certificate Issued"**. Nếu bạn bật
   proxy Cloudflare (cam) thì **bắt buộc** SSL/TLS = **Full (strict)**; để **Flexible** sẽ
   `ERR_TOO_MANY_REDIRECTS`.
+
+---
+
+## Kịch bản F — Phao cứu sinh: Cloudflare Tunnel từ máy mình
+
+Khi **mọi thứ phía host đều hỏng** (hết quota, service xoá nhầm, nhà cung cấp sập, không kịp
+dựng lại): trỏ `voicego.res3pl.com` thẳng vào máy bạn. **Không tài khoản, không thẻ, không
+quota, không chờ mùng 1.** Đây là thứ mà 2 lần bị suspend trước không có.
+
+`cloudflared` mở kết nối **đi ra** tới Cloudflare, nên không cần IP public, không mở port,
+không đụng router/NAT. WebSocket (Socket.IO) đi qua tunnel bình thường.
+
+**Đánh đổi, biết trước:** link chỉ sống khi **máy bật + có mạng + container đang chạy**. Đây
+là phương án cấp cứu và demo có canh giờ, **không phải** chỗ để link nằm dài ngày.
+
+### Làm TRƯỚC (5 phút, làm ngay hôm nay — lúc cháy nhà không kịp làm)
+
+Ba bước này không đụng gì tới DNS đang chạy, làm sẵn để hôm khẩn cấp chỉ còn 2 lệnh:
+
+```bash
+winget install --id Cloudflare.cloudflared     # Windows; macOS: brew install cloudflared
+cloudflared tunnel login                       # mở trình duyệt -> chọn zone res3pl.com
+cloudflared tunnel create voicego              # in ra UUID + lưu credentials vào ~/.cloudflared
+```
+
+Thư mục `~/.cloudflared/` chứa **credentials của tunnel** — đừng copy vào repo, đừng commit.
+
+Kiểm tra đã sẵn sàng: `cloudflared tunnel list` phải thấy tên `voicego`.
+
+### Lúc khẩn cấp (~2 phút)
+
+```bash
+# 1. Chạy app đúng bản đã deploy (cùng Dockerfile, nên không có chuyện "máy tôi chạy được")
+docker build -t voicego ./voicego
+docker run -d -p 8000:8000 --env-file voicego/backend/.env.production voicego
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/api/health   # phải 200
+
+# 2. Trỏ domain vào tunnel
+#    XOÁ bản ghi CNAME `voicego` cũ (trỏ Render) trên Cloudflare trước, nếu không lệnh này
+#    báo lỗi trùng bản ghi. Hoặc thêm --overwrite-dns.
+cloudflared tunnel route dns voicego voicego.res3pl.com
+
+# 3. Mở tunnel — GIỮ CỬA SỔ NÀY, đóng là link chết
+cloudflared tunnel --url http://localhost:8000 run voicego
+```
+
+Rồi xác minh từ ngoài như mọi lần:
+
+```bash
+bash voicego/smoke_test.sh https://voicego.res3pl.com     # phải đủ 4 OK
+```
+
+Ghi chú:
+
+- Bản ghi DNS lúc này là CNAME `voicego` → `<UUID>.cfargotunnel.com`, **Proxied (cam)** —
+  `cloudflared` tự tạo đúng, đừng sửa tay thành xám.
+- SSL/TLS mode không còn quan trọng như đường Render: đoạn cloudflared ↔ Cloudflare đã mã hoá
+  sẵn, còn cloudflared ↔ app là `localhost`, không ra internet.
+- Bước 0 (`x-render-routing`) sẽ không còn header của Render nữa — đúng, vì không còn đi qua
+  Render. `smoke_test.sh` vẫn chạy bình thường.
+
+### Trả về Render sau khi đã dựng lại được
+
+1. Cloudflare → DNS → **xoá** CNAME `voicego` (đang trỏ `*.cfargotunnel.com`).
+2. Tạo lại CNAME `voicego` → đích `*.onrender.com` → **DNS only (xám)**.
+3. Render → Custom Domains → đợi lại **"Certificate Issued"** (cert phải cấp lại, vài phút).
+4. `smoke_test.sh` 4/4 rồi mới tắt `cloudflared` — **đừng tắt trước**, kẻo link chết ở giữa.
 
 ---
 
@@ -170,5 +240,6 @@ không chạy được tiến trình server.
 
 ## Nhớ 1 dòng
 
-> `curl -sI` xem có `suspend` không → suspend thì nâng Starter hoặc Blueprint sang workspace
-> khác → sửa CNAME → `smoke_test.sh` 4/4. Secret luôn nằm sẵn ở `.env.production`.
+> `curl -sI` xem có `suspend` không → suspend thì chờ mùng 1 / nâng Starter / dựng ở workspace
+> khác → sửa CNAME → `smoke_test.sh` 4/4. Không kịp thì **Kịch bản F: `cloudflared tunnel run`**.
+> Secret luôn nằm sẵn ở `.env.production`, tunnel `voicego` luôn tạo sẵn từ trước.
