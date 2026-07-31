@@ -103,6 +103,7 @@ họ vừa dựng → Space có thể bị gỡ ngay giữa lúc chấm. Không 
 | `MONGODB_DB` | ⬜ | mặc định `voicego` |
 | `FPT_API_KEY` | ⬜ | TTS tiếng Việt (hết quota vẫn chạy nhờ edge-tts) |
 | `TTS_PRIMARY` | ⬜ | Đặt `edge` để dùng thẳng edge-tts miễn phí (khuyến nghị khi FPT hết quota) |
+| | | *Mua key FPT sau:* khai `FPT_API_KEY` + **xoá** `TTS_PRIMARY` (mặc định đã là `fpt`) → Render restart ~30s, **không rebuild**. Đổi ngược lại cũng vậy. Engine hỏng thì tự rơi sang cái còn lại **trong im lặng**, nên muốn biết FPT có chạy thật không thì xem dashboard FPT, đừng tin tai. |
 | `GEMINI_API_KEY` | ⬜ | Tuỳ chọn grounding geocode |
 
 > **Đổi LLM:** mặc định đã trỏ DeepSeek (`deepseek-chat`). Muốn quay lại Groq thì set
