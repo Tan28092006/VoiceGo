@@ -51,3 +51,5 @@ services:
         value: gemini-2.5-flash
       - key: GOOGLE_MAPS_API_KEY   # Places API (New) + Routes API; để trống -> fallback OSM/OSRM
         sync: false
+      - key: MAPBOX_TOKEN          # Mapbox geocoding + directions (free); để trống -> fallback OSM/OSRM
+        sync: false

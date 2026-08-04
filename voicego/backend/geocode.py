@@ -30,6 +30,11 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 GOOGLE_PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
 
+# Mapbox geocoding — strong VN coverage, generous free tier, no billing hassle.
+# Used right after Google (which no-ops without a working key). Gated by token.
+MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
+MAPBOX_GEOCODE_URL = "https://api.mapbox.com/geocoding/v5/mapbox.places"
+
 # Service model: instead of a fixed city box, we bias + limit geocoding to a
 # radius around the PICKUP location (the user's GPS). This makes the app work
 # anywhere in Vietnam while still rejecting destinations too far to serve.
@@ -105,6 +110,40 @@ def _google_places(text, center_lat=None, center_lng=None, limit=5):
         name = (p.get("displayName") or {}).get("text") or text
         addr = (p.get("formattedAddress") or name).replace(", Việt Nam", "").strip()
         out.append({"name": name, "address": addr, "lat": float(lat), "lng": float(lng)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _mapbox_geocode(text, center_lat=None, center_lng=None, limit=5):
+    """Mapbox Geocoding (v5) — good VN coverage, free tier. Returns
+    [{name,address,lat,lng}] biased to the pickup, or [] when no token/result."""
+    if not MAPBOX_TOKEN or not (text or "").strip():
+        return []
+    from urllib.parse import quote
+    params = {
+        "access_token": MAPBOX_TOKEN,
+        "country": "vn",
+        "language": "vi",
+        "limit": max(1, min(int(limit), 10)),
+        "types": "poi,address,place,locality,neighborhood",
+    }
+    if center_lat is not None and center_lng is not None:
+        params["proximity"] = f"{center_lng},{center_lat}"
+    try:
+        r = requests.get(f"{MAPBOX_GEOCODE_URL}/{quote(text)}.json", params=params, timeout=10)
+        data = r.json()
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for f in (data.get("features") or []):
+        center = f.get("center") or []
+        if len(center) < 2:
+            continue
+        lng, lat = float(center[0]), float(center[1])
+        name = f.get("text") or text
+        addr = (f.get("place_name") or name).replace(", Việt Nam", "").replace(", Vietnam", "").strip()
+        out.append({"name": name, "address": addr, "lat": lat, "lng": lng})
         if len(out) >= limit:
             break
     return out
@@ -194,11 +233,14 @@ def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
     center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
     center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
 
-    # Google Places first (best VN coverage) when a key is set.
-    gp = _google_places(text, center_lat, center_lng, limit=limit)
-    if gp:
+    # Best providers first: Google Places (if a working key), then Mapbox (if a
+    # token). Each no-ops to [] when unavailable, so we fall through cleanly.
+    for provider in (_google_places, _mapbox_geocode):
+        hits = provider(text, center_lat, center_lng, limit=limit)
+        if not hits:
+            continue
         out, seen = [], set()
-        for c in gp:
+        for c in hits:
             if not _within_service(c["lat"], c["lng"], center_lat, center_lng):
                 continue
             key = f"{round(c['lat'], 3)},{round(c['lng'], 3)}"
@@ -293,15 +335,17 @@ def resolve_destination(text, user_lat=None, user_lng=None):
                 "province": hit.get("province", ""), "lat": hit["lat"], "lng": hit["lng"],
                 "distanceKm": dist, "confidence": 1.0, "source": "verified", "alternatives": []}
 
-    # 0.5) Google Places (most accurate for VN place names) when a key is set.
-    gp = _google_places(text, center_lat, center_lng, limit=1)
-    if gp:
-        p = gp[0]
-        if _within_service(p["lat"], p["lng"], center_lat, center_lng):
-            dist = round(_haversine_km(user_lat, user_lng, p["lat"], p["lng"]), 1) if user_lat is not None else None
-            return {"ok": True, "name": p["name"], "address": p["address"], "province": "",
-                    "lat": p["lat"], "lng": p["lng"], "distanceKm": dist, "confidence": 0.95,
-                    "source": "google_places", "alternatives": []}
+    # 0.5) Best geocoders when configured: Google Places (working key), then Mapbox
+    # (token). Each returns [] when unavailable, so we fall through to the LLM layers.
+    for provider, src in ((_google_places, "google_places"), (_mapbox_geocode, "mapbox")):
+        hits = provider(text, center_lat, center_lng, limit=1)
+        if hits:
+            p = hits[0]
+            if _within_service(p["lat"], p["lng"], center_lat, center_lng):
+                dist = round(_haversine_km(user_lat, user_lng, p["lat"], p["lng"]), 1) if user_lat is not None else None
+                return {"ok": True, "name": p["name"], "address": p["address"], "province": "",
+                        "lat": p["lat"], "lng": p["lng"], "distanceKm": dist, "confidence": 0.95,
+                        "source": src, "alternatives": []}
 
     # 1) grounded Gemini (best, real search) if available; 2) Groq plain (fast, no limit).
     g = None
