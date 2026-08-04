@@ -24,6 +24,12 @@ from places_db import lookup as _local_lookup
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
+# Google Places API (New) — most accurate for Vietnamese place names. Used as the
+# top geocoding layer when GOOGLE_MAPS_API_KEY is set; else everything falls back
+# to the existing Gemini/Nominatim layers (zero behaviour change without a key).
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+GOOGLE_PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
+
 # Service model: instead of a fixed city box, we bias + limit geocoding to a
 # radius around the PICKUP location (the user's GPS). This makes the app work
 # anywhere in Vietnam while still rejecting destinations too far to serve.
@@ -56,6 +62,52 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     dl = math.radians(lng2 - lng1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _google_places(text, center_lat=None, center_lng=None, limit=5):
+    """Google Places API (New) Text Search — best coverage for VN place names.
+    Returns [{name, address, lat, lng}] biased to the pickup area, or [] when no
+    key / no result / error (caller falls back to the other layers)."""
+    if not GOOGLE_MAPS_API_KEY or not (text or "").strip():
+        return []
+    body = {
+        "textQuery": text,
+        "languageCode": "vi",
+        "regionCode": "VN",
+        "maxResultCount": max(1, min(int(limit), 10)),
+    }
+    if center_lat is not None and center_lng is not None:
+        # locationBias circle radius is capped at 50 km by the API.
+        body["locationBias"] = {"circle": {
+            "center": {"latitude": center_lat, "longitude": center_lng},
+            "radius": min(SERVICE_RADIUS_KM * 1000.0, 50000.0),
+        }}
+    try:
+        r = requests.post(
+            GOOGLE_PLACES_URL,
+            json=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+                "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
+            },
+            timeout=10,
+        )
+        data = r.json()
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for p in (data.get("places") or []):
+        loc = p.get("location") or {}
+        lat, lng = loc.get("latitude"), loc.get("longitude")
+        if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+            continue
+        name = (p.get("displayName") or {}).get("text") or text
+        addr = (p.get("formattedAddress") or name).replace(", Việt Nam", "").strip()
+        out.append({"name": name, "address": addr, "lat": float(lat), "lng": float(lng)})
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _gemini_call(prompt, grounded, retries=2):
@@ -141,6 +193,26 @@ def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
     radius of the pickup, one per area."""
     center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
     center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
+
+    # Google Places first (best VN coverage) when a key is set.
+    gp = _google_places(text, center_lat, center_lng, limit=limit)
+    if gp:
+        out, seen = [], set()
+        for c in gp:
+            if not _within_service(c["lat"], c["lng"], center_lat, center_lng):
+                continue
+            key = f"{round(c['lat'], 3)},{round(c['lng'], 3)}"
+            if key in seen:
+                continue
+            seen.add(key)
+            dist = round(_haversine_km(user_lat, user_lng, c["lat"], c["lng"]), 1) if user_lat is not None else None
+            out.append({"name": c["name"], "address": c["address"], "lat": c["lat"],
+                        "lng": c["lng"], "area": "", "distanceKm": dist})
+            if len(out) >= 4:
+                break
+        if out:
+            return out
+
     params = {"q": text, "format": "json", "limit": limit,
               "countrycodes": "vn", "addressdetails": 1}
     vb = _viewbox(center_lat, center_lng)
@@ -220,6 +292,16 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         return {"ok": True, "name": hit["name"], "address": hit["address"],
                 "province": hit.get("province", ""), "lat": hit["lat"], "lng": hit["lng"],
                 "distanceKm": dist, "confidence": 1.0, "source": "verified", "alternatives": []}
+
+    # 0.5) Google Places (most accurate for VN place names) when a key is set.
+    gp = _google_places(text, center_lat, center_lng, limit=1)
+    if gp:
+        p = gp[0]
+        if _within_service(p["lat"], p["lng"], center_lat, center_lng):
+            dist = round(_haversine_km(user_lat, user_lng, p["lat"], p["lng"]), 1) if user_lat is not None else None
+            return {"ok": True, "name": p["name"], "address": p["address"], "province": "",
+                    "lat": p["lat"], "lng": p["lng"], "distanceKm": dist, "confidence": 0.95,
+                    "source": "google_places", "alternatives": []}
 
     # 1) grounded Gemini (best, real search) if available; 2) Groq plain (fast, no limit).
     g = None
