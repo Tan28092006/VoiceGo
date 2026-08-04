@@ -140,6 +140,11 @@ def _mapbox_geocode(text, center_lat=None, center_lng=None, limit=5):
         center = f.get("center") or []
         if len(center) < 2:
             continue
+        # Mapbox VN POI coverage is thin; a low-relevance hit is usually a wrong
+        # fuzzy match (e.g. "Vạn Hạnh Mall" -> "Vạn Hạnh" street). Drop those so the
+        # stronger layers behind (gazetteer + Gemini grounded search) get a turn.
+        if float(f.get("relevance", 0)) < 0.6:
+            continue
         lng, lat = float(center[0]), float(center[1])
         name = f.get("text") or text
         addr = (f.get("place_name") or name).replace(", Việt Nam", "").replace(", Vietnam", "").strip()
