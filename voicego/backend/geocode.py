@@ -135,23 +135,31 @@ def _mapbox_geocode(text, center_lat=None, center_lng=None, limit=5):
         data = r.json()
     except Exception:  # noqa: BLE001
         return []
-    out = []
+    feats = []
     for f in (data.get("features") or []):
         center = f.get("center") or []
         if len(center) < 2:
             continue
-        # Mapbox VN POI coverage is thin; a low-relevance hit is usually a wrong
-        # fuzzy match (e.g. "Vạn Hạnh Mall" -> "Vạn Hạnh" street). Drop those so the
-        # stronger layers behind (gazetteer + Gemini grounded search) get a turn.
-        if float(f.get("relevance", 0)) < 0.6:
-            continue
         lng, lat = float(center[0]), float(center[1])
         name = f.get("text") or text
         addr = (f.get("place_name") or name).replace(", Việt Nam", "").replace(", Vietnam", "").strip()
-        out.append({"name": name, "address": addr, "lat": lat, "lng": lng})
-        if len(out) >= limit:
-            break
-    return out
+        feats.append({"name": name, "address": addr, "lat": lat, "lng": lng})
+    # Mapbox mis-ranks VN results (a same-name street in another province can
+    # outrank the local one — e.g. "Ngô Gia Tự Q10" put Tây Ninh 88 km away first).
+    # For a ride app the destination is near the pickup, so sort by distance to the
+    # pickup center and return nearest first.
+    if center_lat is not None and center_lng is not None:
+        feats.sort(key=lambda p: _haversine_km(center_lat, center_lng, p["lat"], p["lng"]))
+    return feats[:limit]
+
+
+def _mapbox_first(text, center_lat, center_lng):
+    """Single best Mapbox hit (nearest to pickup) within the service radius, or None.
+    Used as a fallback BELOW the Gemini+Google-Search layer."""
+    for p in _mapbox_geocode(text, center_lat, center_lng, limit=5):
+        if _within_service(p["lat"], p["lng"], center_lat, center_lng):
+            return p
+    return None
 
 
 def _gemini_call(prompt, grounded, retries=2):
@@ -340,17 +348,16 @@ def resolve_destination(text, user_lat=None, user_lng=None):
                 "province": hit.get("province", ""), "lat": hit["lat"], "lng": hit["lng"],
                 "distanceKm": dist, "confidence": 1.0, "source": "verified", "alternatives": []}
 
-    # 0.5) Best geocoders when configured: Google Places (working key), then Mapbox
-    # (token). Each returns [] when unavailable, so we fall through to the LLM layers.
-    for provider, src in ((_google_places, "google_places"), (_mapbox_geocode, "mapbox")):
-        hits = provider(text, center_lat, center_lng, limit=1)
-        if hits:
-            p = hits[0]
-            if _within_service(p["lat"], p["lng"], center_lat, center_lng):
-                dist = round(_haversine_km(user_lat, user_lng, p["lat"], p["lng"]), 1) if user_lat is not None else None
-                return {"ok": True, "name": p["name"], "address": p["address"], "province": "",
-                        "lat": p["lat"], "lng": p["lng"], "distanceKm": dist, "confidence": 0.95,
-                        "source": src, "alternatives": []}
+    # 0.5) Google Places when a working key is set (best for VN). No-ops without a
+    # key. Mapbox is NOT tried here — it mis-ranks VN results, so it sits BELOW the
+    # Gemini+Google-Search layer as a nearest-to-pickup fallback (see _mapbox_first).
+    gp = _google_places(text, center_lat, center_lng, limit=1)
+    if gp and _within_service(gp[0]["lat"], gp[0]["lng"], center_lat, center_lng):
+        p = gp[0]
+        dist = round(_haversine_km(user_lat, user_lng, p["lat"], p["lng"]), 1) if user_lat is not None else None
+        return {"ok": True, "name": p["name"], "address": p["address"], "province": "",
+                "lat": p["lat"], "lng": p["lng"], "distanceKm": dist, "confidence": 0.95,
+                "source": "google_places", "alternatives": []}
 
     # 1) grounded Gemini (best, real search) if available; 2) Groq plain (fast, no limit).
     g = None
@@ -361,8 +368,14 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         g = _parse_json(llm_json(_build_prompt(text, user_lat, user_lng, False)))
         via = "groq"
 
-    # 3) No model output at all -> Nominatim directly on the raw text (biased to pickup).
+    # 3) No model output at all -> Mapbox (nearest to pickup), then Nominatim.
     if not g:
+        mb = _mapbox_first(text, center_lat, center_lng)
+        if mb:
+            dist = round(_haversine_km(user_lat, user_lng, mb["lat"], mb["lng"]), 1) if user_lat is not None else None
+            return {"ok": True, "name": mb["name"], "address": mb["address"], "province": "",
+                    "lat": mb["lat"], "lng": mb["lng"], "distanceKm": dist, "confidence": 0.7,
+                    "source": "mapbox", "alternatives": []}
         coords = _nominatim(text, center_lat, center_lng) or _nominatim(f"{text}, Việt Nam")
         if not coords:
             return {"ok": False, "reason": "not_found"}
@@ -398,6 +411,13 @@ def resolve_destination(text, user_lat=None, user_lng=None):
         coords = (float(g_lat), float(g_lng))
         source = "grounded"
     if not coords:
+        # Last resort before giving up: Mapbox nearest-to-pickup on the model's name/text.
+        mb = _mapbox_first(name, center_lat, center_lng) or _mapbox_first(text, center_lat, center_lng)
+        if mb:
+            dist = round(_haversine_km(user_lat, user_lng, mb["lat"], mb["lng"]), 1) if user_lat is not None else None
+            return {"ok": True, "name": mb["name"], "address": mb["address"], "province": g.get("province", ""),
+                    "lat": mb["lat"], "lng": mb["lng"], "distanceKm": dist, "confidence": 0.7,
+                    "source": "mapbox", "alternatives": g.get("alternatives", [])}
         return {"ok": False, "reason": "not_found", "name": name, "address": address}
 
     lat, lng = coords
