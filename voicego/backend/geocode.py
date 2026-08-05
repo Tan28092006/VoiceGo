@@ -404,20 +404,22 @@ def resolve_destination(text, user_lat=None, user_lng=None):
                     address = hit[2]  # use Nominatim's REAL address (matches coords)
                     name = hit[2].split(",")[0].strip() or name  # keep name == coords
                 break
-    # Only trust model coords from GROUNDED search (real). NEVER use plain-Groq
-    # coords — they are hallucinated (audit showed 10-21km errors). If Nominatim
-    # can't place it, return not_found so the agent asks again (safer than wrong).
+    # Real coords beat LLM coords: cross-check the model's place with Mapbox (nearest
+    # to pickup). A real geocoder is usually more precise than the model's own lat/lng
+    # (test: "179 Ngô Gia Tự" -> Mapbox 252 m vs Gemini 811 m off target).
+    if not coords:
+        mb = _mapbox_first(name, center_lat, center_lng) or _mapbox_first(text, center_lat, center_lng)
+        if mb:
+            coords = (mb["lat"], mb["lng"])
+            source = "mapbox"
+            address = mb["address"] or address
+            name = mb["name"] or name
+    # Only trust the model's OWN coords (grounded search) if no real geocoder could
+    # place it. NEVER use plain-Groq coords — they hallucinate (10-21km errors).
     if not coords and via == "grounded" and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
         coords = (float(g_lat), float(g_lng))
         source = "grounded"
     if not coords:
-        # Last resort before giving up: Mapbox nearest-to-pickup on the model's name/text.
-        mb = _mapbox_first(name, center_lat, center_lng) or _mapbox_first(text, center_lat, center_lng)
-        if mb:
-            dist = round(_haversine_km(user_lat, user_lng, mb["lat"], mb["lng"]), 1) if user_lat is not None else None
-            return {"ok": True, "name": mb["name"], "address": mb["address"], "province": g.get("province", ""),
-                    "lat": mb["lat"], "lng": mb["lng"], "distanceKm": dist, "confidence": 0.7,
-                    "source": "mapbox", "alternatives": g.get("alternatives", [])}
         return {"ok": False, "reason": "not_found", "name": name, "address": address}
 
     lat, lng = coords
