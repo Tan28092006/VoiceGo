@@ -307,6 +307,22 @@ def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
     return out
 
 
+def _dms_to_dec(s):
+    """Parse a DMS coordinate ('10°47′09.1″B' or '10 độ 47 phút 09.1 giây') to decimal.
+    Also accepts a plain decimal string. Returns a positive float (VN is always N/E),
+    or None. Asking Gemini for DMS is far more precise than decimal (it drops the pin
+    on the exact place, not a neighbouring building)."""
+    if not s:
+        return None
+    nums = re.findall(r"\d+(?:\.\d+)?", str(s))
+    if not nums:
+        return None
+    d = float(nums[0])
+    mn = float(nums[1]) if len(nums) > 1 else 0.0
+    sec = float(nums[2]) if len(nums) > 2 else 0.0
+    return round(abs(d) + mn / 60 + sec / 3600, 6)
+
+
 def _short_address(addr, name=""):
     """Trim a long geocoder/LLM address to a concise, speakable form: keep the first
     few meaningful parts (số nhà + đường + phường/quận), drop country/postcode/extras."""
@@ -330,11 +346,14 @@ def _build_prompt(text, user_lat, user_lng, grounded):
         'Phân loại query_type: "address" nếu là ĐỊA CHỈ CHI TIẾT (có số nhà/số cụ thể); '
         '"poi" nếu là TÊN địa điểm/landmark/doanh nghiệp/trường học.\n'
         "Nếu địa điểm có NHIỀU cơ sở/chi nhánh trong khu vực, LIỆT KÊ TẤT CẢ (tối đa 4), gần người dùng trước. "
-        "Nếu chỉ một nơi, trả về một phần tử. Toạ độ phải THẬT, không bịa. "
-        "full_address NGẮN GỌN: số nhà + đường + phường/quận, KHÔNG kèm quốc gia/mã bưu chính.\n"
+        "Nếu chỉ một nơi, trả về một phần tử. full_address NGẮN GỌN: số nhà + đường + "
+        "phường/quận, KHÔNG kèm quốc gia/mã bưu chính.\n"
+        "Toạ độ trả ở dạng DMS (độ, phút, giây tới 0.1 giây) — CHÍNH XÁC hơn thập phân; "
+        "đặt pin ĐÚNG địa điểm, không lệch sang toà nhà kế bên. "
+        "Ví dụ: lat_dms = 10 độ 47 phút 09.1 giây Bắc, lng_dms = 106 độ 42 phút 09.8 giây Đông.\n"
         "Trả về DUY NHẤT một JSON (không giải thích):\n"
-        '{"query_type":"poi|address","locations":[{"name":"<tên>",'
-        '"full_address":"<địa chỉ ngắn gọn>","latitude":<số>,"longitude":<số>}]}'
+        '{"query_type":"poi|address","locations":[{"name":"<tên>","full_address":"<địa chỉ ngắn gọn>",'
+        '"lat_dms":"<vĩ độ độ-phút-giây>","lng_dms":"<kinh độ độ-phút-giây>"}]}'
     )
 
 
@@ -349,10 +368,14 @@ def _gemini_locations(text, user_lat, user_lng):
         return None
     out = []
     for item in (data.get("locations") or []):
-        try:
-            lat, lng = float(item["latitude"]), float(item["longitude"])
-        except (KeyError, TypeError, ValueError):
-            continue
+        # Prefer DMS (precise); fall back to any decimal lat/lng the model included.
+        lat = _dms_to_dec(item.get("lat_dms"))
+        lng = _dms_to_dec(item.get("lng_dms"))
+        if lat is None or lng is None:
+            try:
+                lat, lng = abs(float(item["latitude"])), abs(float(item["longitude"]))
+            except (KeyError, TypeError, ValueError):
+                continue
         name = item.get("name") or text
         out.append({"name": name, "address": _short_address(item.get("full_address") or name, name),
                     "lat": lat, "lng": lng})
