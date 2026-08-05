@@ -20,7 +20,7 @@ import math
 import requests
 
 from voice import GEMINI_API_KEY, GEMINI_MODEL, llm_json
-from places_db import lookup as _local_lookup
+from places_db import lookup as _local_lookup, lookup_all as _lookup_all_pd
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
@@ -307,133 +307,126 @@ def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
     return out
 
 
+def _short_address(addr, name=""):
+    """Trim a long geocoder/LLM address to a concise, speakable form: keep the first
+    few meaningful parts (số nhà + đường + phường/quận), drop country/postcode/extras."""
+    if not addr:
+        return name or ""
+    a = re.sub(r",?\s*\d{5,6}\b", "", addr)                 # postcode
+    a = a.replace(", Việt Nam", "").replace(", Vietnam", "").strip().strip(",")
+    parts = [p.strip() for p in a.split(",") if p.strip()]
+    return ", ".join(parts[:4]) if parts else (name or addr)
+
+
 def _build_prompt(text, user_lat, user_lng, grounded):
     loc_hint = ""
     if user_lat is not None and user_lng is not None:
-        loc_hint = (
-            f"Vị trí người dùng: {user_lat}, {user_lng}. "
-            "Nếu địa điểm có NHIỀU chi nhánh/cơ sở, ưu tiên cơ sở GẦN vị trí này nhất, "
-            "và liệt kê các cơ sở khác vào 'alternatives'.\n"
-        )
-    how = ("Hãy DÙNG TÌM KIẾM để tra địa chỉ THẬT.\n" if grounded
-           else "Dựa trên hiểu biết của bạn về địa điểm ở Việt Nam, đưa địa chỉ đầy đủ nhất có thể.\n")
+        loc_hint = f"Vị trí người dùng: {user_lat}, {user_lng}. Ưu tiên cơ sở GẦN vị trí này.\n"
+    how = ("Hãy DÙNG TÌM KIẾM để tra thông tin THẬT.\n" if grounded
+           else "Dựa trên hiểu biết của bạn về địa điểm ở Việt Nam.\n")
     return (
-        "Bạn là trợ lý định vị cho ứng dụng gọi xe. " + how +
+        "Bạn là bộ định vị cho ứng dụng gọi xe ở Việt Nam. " + how +
         f'Người dùng muốn đến: "{text}"\n' + loc_hint +
+        'Phân loại query_type: "address" nếu là ĐỊA CHỈ CHI TIẾT (có số nhà/số cụ thể); '
+        '"poi" nếu là TÊN địa điểm/landmark/doanh nghiệp/trường học.\n'
+        "Nếu địa điểm có NHIỀU cơ sở/chi nhánh trong khu vực, LIỆT KÊ TẤT CẢ (tối đa 4), gần người dùng trước. "
+        "Nếu chỉ một nơi, trả về một phần tử. Toạ độ phải THẬT, không bịa. "
+        "full_address NGẮN GỌN: số nhà + đường + phường/quận, KHÔNG kèm quốc gia/mã bưu chính.\n"
         "Trả về DUY NHẤT một JSON (không giải thích):\n"
-        '{"name":"<tên địa điểm>","full_address":"<địa chỉ đầy đủ kèm phường/quận/tỉnh>",'
-        '"province":"<tỉnh/thành>","latitude":<số thập phân hoặc null>,'
-        '"longitude":<số thập phân hoặc null>,"confidence":<0..1>,'
-        '"alternatives":["<chi nhánh khác nếu có>"]}'
+        '{"query_type":"poi|address","locations":[{"name":"<tên>",'
+        '"full_address":"<địa chỉ ngắn gọn>","latitude":<số>,"longitude":<số>}]}'
     )
 
 
-def resolve_destination(text, user_lat=None, user_lng=None):
-    """Resolve a spoken place name to a real address + coordinates (layered fallback).
-    Results are biased to + limited within the service radius of the pickup
-    (user_lat/user_lng), falling back to DEFAULT_CENTER when GPS is unavailable."""
+def _gemini_locations(text, user_lat, user_lng):
+    """GROUNDED Gemini -> {query_type, locations:[{name,address,lat,lng}]} with REAL
+    coords, or None. Plain (non-grounded) LLM coords are hallucinated, so we only
+    trust grounded output; without a key the caller falls back to a real geocoder."""
+    if not GEMINI_API_KEY:
+        return None
+    data = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, True), grounded=True, retries=1))
+    if not data:
+        return None
+    out = []
+    for item in (data.get("locations") or []):
+        try:
+            lat, lng = float(item["latitude"]), float(item["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        name = item.get("name") or text
+        out.append({"name": name, "address": _short_address(item.get("full_address") or name, name),
+                    "lat": lat, "lng": lng})
+    return {"query_type": data.get("query_type", "poi"), "locations": out}
+
+
+def resolve_locations(text, user_lat=None, user_lng=None):
+    """Resolve a spoken place to 1..N real locations (campuses/branches) with coords.
+    Gemini (Google-Search grounded) drives it and may return several branches -> the
+    agent offers them as candidates. POI coords come straight from Gemini (accurate);
+    a single detailed ADDRESS is cross-checked against a real geocoder (LLM coords
+    drift on house numbers). NO place is hardcoded — arbitrary places work."""
     if not text.strip():
         return {"ok": False, "reason": "empty"}
-
     center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
     center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
 
-    # 0) Local gazetteer FIRST: verified landmarks resolve instantly with trusted
-    #    coords — no network call, no rate-limit, and it fixes places public
-    #    geocoders get wrong (Landmark 81, Nhà thờ Đức Bà, Bách Khoa, ...).
-    hit = _local_lookup(text)
-    if hit:
-        dist = round(_haversine_km(user_lat, user_lng, hit["lat"], hit["lng"]), 1) if user_lat is not None else None
-        return {"ok": True, "name": hit["name"], "address": hit["address"],
-                "province": hit.get("province", ""), "lat": hit["lat"], "lng": hit["lng"],
-                "distanceKm": dist, "confidence": 1.0, "source": "verified", "alternatives": []}
+    def fin(loc):
+        d = round(_haversine_km(user_lat, user_lng, loc["lat"], loc["lng"]), 1) if user_lat is not None else None
+        return {"name": loc["name"], "address": _short_address(loc.get("address"), loc["name"]),
+                "lat": loc["lat"], "lng": loc["lng"], "distanceKm": d}
 
-    # 0.5) Google Places when a working key is set (best for VN). No-ops without a
-    # key. Mapbox is NOT tried here — it mis-ranks VN results, so it sits BELOW the
-    # Gemini+Google-Search layer as a nearest-to-pickup fallback (see _mapbox_first).
-    gp = _google_places(text, center_lat, center_lng, limit=1)
-    if gp and _within_service(gp[0]["lat"], gp[0]["lng"], center_lat, center_lng):
-        p = gp[0]
-        dist = round(_haversine_km(user_lat, user_lng, p["lat"], p["lng"]), 1) if user_lat is not None else None
-        return {"ok": True, "name": p["name"], "address": p["address"], "province": "",
-                "lat": p["lat"], "lng": p["lng"], "distanceKm": dist, "confidence": 0.95,
-                "source": "google_places", "alternatives": []}
+    def within(loc):
+        return _within_service(loc["lat"], loc["lng"], center_lat, center_lng)
 
-    # 1) grounded Gemini (best, real search) if available; 2) Groq plain (fast, no limit).
-    g = None
-    via = "grounded"
-    if GEMINI_API_KEY:
-        g = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, True), grounded=True, retries=1))
-    if not g:
-        g = _parse_json(llm_json(_build_prompt(text, user_lat, user_lng, False)))
-        via = "groq"
+    # 0) Verified gazetteer (instant, exact; may already hold multiple branches).
+    ga = [{"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]}
+          for c in _lookup_all_pd(text)]
+    ga = [l for l in ga if within(l)]
+    if ga:
+        return {"ok": True, "query_type": "poi", "source": "verified", "locations": [fin(l) for l in ga[:4]]}
 
-    # 3) No model output at all -> Mapbox (nearest to pickup), then Nominatim.
-    if not g:
-        mb = _mapbox_first(text, center_lat, center_lng)
-        if mb:
-            dist = round(_haversine_km(user_lat, user_lng, mb["lat"], mb["lng"]), 1) if user_lat is not None else None
-            return {"ok": True, "name": mb["name"], "address": mb["address"], "province": "",
-                    "lat": mb["lat"], "lng": mb["lng"], "distanceKm": dist, "confidence": 0.7,
-                    "source": "mapbox", "alternatives": []}
-        coords = _nominatim(text, center_lat, center_lng) or _nominatim(f"{text}, Việt Nam")
-        if not coords:
-            return {"ok": False, "reason": "not_found"}
-        lat, lng = coords
-        if not _within_service(lat, lng, center_lat, center_lng):
-            return {"ok": False, "reason": "out_of_area"}  # too far from pickup
-        dist = round(_haversine_km(user_lat, user_lng, lat, lng), 1) if user_lat is not None else None
-        return {"ok": True, "name": text, "address": text, "province": "", "lat": lat, "lng": lng,
-                "distanceKm": dist, "confidence": 0.4, "source": "nominatim_raw", "alternatives": []}
+    # 1) Google Places (if a working key) — precise, may return several branches.
+    gp = [p for p in _google_places(text, center_lat, center_lng, limit=4) if within(p)]
+    if gp:
+        return {"ok": True, "query_type": "poi", "source": "google_places", "locations": [fin(p) for p in gp[:4]]}
 
-    address = g.get("full_address") or text
-    name = g.get("name") or text
-    g_lat, g_lng = g.get("latitude"), g.get("longitude")
+    # 2) Gemini grounded — arbitrary places, may return multiple branches with real coords.
+    data = _gemini_locations(text, user_lat, user_lng)
+    if data and data.get("locations"):
+        locs = [l for l in data["locations"] if within(l)]
+        if not locs:
+            return {"ok": False, "reason": "out_of_area"}
+        if user_lat is not None:
+            locs.sort(key=lambda l: _haversine_km(user_lat, user_lng, l["lat"], l["lng"]))
+        # Cross-check ONLY a single detailed-address result (LLM coords drift there):
+        # if a real geocoder lands in the same area, use its (more precise) coord.
+        if data.get("query_type") == "address" and len(locs) == 1:
+            mb = _mapbox_first(locs[0].get("address") or text, center_lat, center_lng)
+            if mb and _haversine_km(mb["lat"], mb["lng"], locs[0]["lat"], locs[0]["lng"]) <= 3:
+                locs[0] = {"name": locs[0]["name"], "address": locs[0].get("address") or mb["address"],
+                           "lat": mb["lat"], "lng": mb["lng"]}
+        return {"ok": True, "query_type": data.get("query_type", "poi"), "source": "grounded",
+                "locations": [fin(l) for l in locs[:4]]}
 
-    # Coords priority: a real POI lookup by NAME / raw text beats an LLM-guessed
-    # address (which can be hallucinated — e.g. 8b put "Vạn Hạnh Mall" in Quận 5).
-    # The LLM address is tried only after, and the model's own coords last.
-    coords = None
-    source = "nominatim"
-    for cand in (name, text, address):
-        if cand and cand.strip():
-            hit = _nominatim_full(cand, center_lat, center_lng)
-            if hit:
-                coords = (hit[0], hit[1])
-                if hit[2]:
-                    address = hit[2]  # use Nominatim's REAL address (matches coords)
-                    name = hit[2].split(",")[0].strip() or name  # keep name == coords
-                break
-    # Prefer the GROUNDED (Google-Search) coords next: for named POIs the model
-    # nails the place (e.g. "THPT Lê Hồng Phong" -> 235 Nguyễn Văn Cừ), whereas a
-    # plain geocoder only knows a same-name street. NEVER use plain-Groq coords —
-    # they hallucinate (10-21 km errors).
-    if not coords and via == "grounded" and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
-        coords = (float(g_lat), float(g_lng))
-        source = "grounded"
-    # Last geocoder before giving up: Mapbox nearest-to-pickup on the model's name/text.
-    if not coords:
-        mb = _mapbox_first(name, center_lat, center_lng) or _mapbox_first(text, center_lat, center_lng)
-        if mb:
-            coords = (mb["lat"], mb["lng"])
-            source = "mapbox"
-            address = mb["address"] or address
-            name = mb["name"] or name
-    if not coords:
-        return {"ok": False, "reason": "not_found", "name": name, "address": address}
+    # 3) Fallback: Mapbox nearest, then Nominatim raw.
+    mb = _mapbox_first(text, center_lat, center_lng)
+    if mb:
+        return {"ok": True, "query_type": "address", "source": "mapbox", "locations": [fin(mb)]}
+    coords = _nominatim(text, center_lat, center_lng) or _nominatim(f"{text}, Việt Nam")
+    if coords:
+        if not _within_service(coords[0], coords[1], center_lat, center_lng):
+            return {"ok": False, "reason": "out_of_area"}
+        return {"ok": True, "query_type": "address", "source": "nominatim_raw",
+                "locations": [fin({"name": text, "address": text, "lat": coords[0], "lng": coords[1]})]}
+    return {"ok": False, "reason": "not_found"}
 
-    lat, lng = coords
-    if not _within_service(lat, lng, center_lat, center_lng):   # too far from pickup to serve
-        return {"ok": False, "reason": "out_of_area", "name": name, "address": address}
-    confidence = float(g.get("confidence", 0.6))
-    if source == "nominatim" and isinstance(g_lat, (int, float)) and isinstance(g_lng, (int, float)):
-        if _haversine_km(lat, lng, float(g_lat), float(g_lng)) > 8:
-            confidence = min(confidence, 0.5)
 
-    distance_km = round(_haversine_km(user_lat, user_lng, lat, lng), 1) if user_lat is not None else None
-
-    return {
-        "ok": True, "name": name, "address": address, "province": g.get("province"),
-        "lat": lat, "lng": lng, "distanceKm": distance_km, "confidence": confidence,
-        "source": source, "alternatives": g.get("alternatives", []),
-    }
+def resolve_destination(text, user_lat=None, user_lng=None):
+    """Single best location — back-compat wrapper over resolve_locations."""
+    r = resolve_locations(text, user_lat, user_lng)
+    if not r.get("ok"):
+        return {"ok": False, "reason": r.get("reason", "not_found")}
+    loc = r["locations"][0]
+    return {"ok": True, "name": loc["name"], "address": loc.get("address"), "province": "",
+            "lat": loc["lat"], "lng": loc["lng"], "distanceKm": loc.get("distanceKm"),
+            "confidence": 0.9, "source": r.get("source"), "alternatives": []}

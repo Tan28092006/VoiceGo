@@ -18,7 +18,7 @@ import time
 import unicodedata
 
 from voice import llm_client, LLM_MODEL
-from geocode import resolve_destination, geocode_candidates, _nominatim, _haversine_km
+from geocode import resolve_locations, resolve_destination, _nominatim, _haversine_km
 from places_db import lookup_all as _lookup_all
 from routing import road_route
 from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request, find_gate_group
@@ -231,21 +231,10 @@ _NEXT_CANDIDATES = (
 
 
 def _do_resolve(query, pk):
-    """Resolve a spoken place. Multi-branch places (KHTN, Bách Khoa — 2 campuses)
-    are offered as a candidate LIST, but ONLY from the VERIFIED gazetteer. We do NOT
-    derive candidates from Mapbox/OSM: for VN they return same-name junk (e.g.
-    "Lê Hồng Phong" -> many streets in different districts) which would bury the
-    correct place and never reach the Gemini+Google-Search resolver.
-    Everything else -> the accurate single resolver (gazetteer → Gemini grounded →
-    Mapbox nearest)."""
-    ga = _lookup_all(query)                                   # verified (accurate)
-    if len(ga) >= 2:
-        merged = [{"name": c["name"], "address": c.get("address"),
-                   "lat": c["lat"], "lng": c["lng"]} for c in ga][:4]
-        return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
-
-    # Single / none -> the accurate single resolver (gazetteer single, grounded, Mapbox).
-    r = resolve_destination(query, pk["lat"], pk["lng"])
+    """Resolve a spoken place via the Gemini-driven resolver. When it returns MULTIPLE
+    locations (a place with several campuses/branches), offer them as a candidate LIST;
+    otherwise return the single place. No place is hardcoded — arbitrary places work."""
+    r = resolve_locations(query, pk["lat"], pk["lng"])
     if not r.get("ok"):
         reason = r.get("reason", "not_found")
         out = {"ok": False, "kind": "place", "reason": reason}
@@ -254,11 +243,18 @@ def _do_resolve(query, pk):
                               "chưa hỗ trợ đặt xe tới đó. Bạn cho mình một điểm đến gần hơn nhé.")
         return out
 
-    g = _gates_for(r["lat"], r["lng"])     # multi-gate place -> offer accessible gate
+    locs = r["locations"]
+    if len(locs) >= 2:                       # several campuses/branches -> let user pick
+        merged = [{"name": l["name"], "address": l.get("address"),
+                   "lat": l["lat"], "lng": l["lng"]} for l in locs[:4]]
+        return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
+
+    loc = locs[0]
+    g = _gates_for(loc["lat"], loc["lng"])   # multi-gate place -> offer accessible gate
     if g:
         return _gate_candidates(g)
-    return {"ok": True, "kind": "place", "name": r["name"], "address": r.get("address"),
-            "lat": r["lat"], "lng": r["lng"],
+    return {"ok": True, "kind": "place", "name": loc["name"], "address": loc.get("address"),
+            "lat": loc["lat"], "lng": loc["lng"],
             "next": "Hỏi người dùng 'xe máy hay ô tô' TRƯỚC khi get_quote."}
 
 
