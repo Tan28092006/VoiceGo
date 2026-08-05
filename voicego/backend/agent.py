@@ -231,25 +231,20 @@ _NEXT_CANDIDATES = (
 
 
 def _do_resolve(query, pk):
-    """Resolve a spoken place. If it's ambiguous (a place with several branches,
-    or a street that exists in many districts) -> return a LIST of REAL candidates
-    to pick from. GENERAL: the geocoder finds branches of ANY place (no per-place
-    aliases needed); the verified gazetteer just adds accuracy + branches the
-    geocoder misses. No hallucinated addresses — every candidate is a real coord."""
+    """Resolve a spoken place. Multi-branch places (KHTN, Bách Khoa — 2 campuses)
+    are offered as a candidate LIST, but ONLY from the VERIFIED gazetteer. We do NOT
+    derive candidates from Mapbox/OSM: for VN they return same-name junk (e.g.
+    "Lê Hồng Phong" -> many streets in different districts) which would bury the
+    correct place and never reach the Gemini+Google-Search resolver.
+    Everything else -> the accurate single resolver (gazetteer → Gemini grounded →
+    Mapbox nearest)."""
     ga = _lookup_all(query)                                   # verified (accurate)
-    geo = geocode_candidates(query, pk["lat"], pk["lng"]) if len(ga) < 2 else []
-
-    # Merge: gazetteer first (verified), then OSM results not near an existing pick.
-    merged = [{"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]} for c in ga]
-    for c in geo:
-        if not any(_haversine_km(c["lat"], c["lng"], m["lat"], m["lng"]) < 1.2 for m in merged):
-            merged.append({"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]})
-    merged = merged[:4]
-
-    if len(merged) >= 2:
+    if len(ga) >= 2:
+        merged = [{"name": c["name"], "address": c.get("address"),
+                   "lat": c["lat"], "lng": c["lng"]} for c in ga][:4]
         return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
 
-    # Single / none -> the accurate single resolver (gazetteer single, grounded, Nominatim).
+    # Single / none -> the accurate single resolver (gazetteer single, grounded, Mapbox).
     r = resolve_destination(query, pk["lat"], pk["lng"])
     if not r.get("ok"):
         reason = r.get("reason", "not_found")
