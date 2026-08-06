@@ -34,12 +34,12 @@ Người xem ──▶ Vercel (CDN, React)  ──HTTPS──▶  Render (FastAP
    |---|---|
    | `MONGODB_URI` | chuỗi Atlas ở Bước 1 |
    | `MONGODB_DB` | `voicego` |
-   | `GROQ_API_KEY` | key Groq |
-   | `GROQ_WHISPER_KEY` | key Groq Whisper |
-   | `FPT_API_KEY` | key FPT.AI |
-   | `GROQ_MODEL` | `openai/gpt-oss-120b` |
-   | `GROQ_GEOCODE_MODEL` | `llama-3.1-8b-instant` |
+   | `DEEPSEEK_API_KEY` | key DeepSeek (dùng cho Agent trò chuyện) |
+   | `GEMINI_API_KEY` | key Google Gemini (dùng để làm sạch địa chỉ) |
+   | `GROQ_WHISPER_KEY` | key Groq (chỉ giữ lại model Whisper cho STT) |
    | `GROQ_WHISPER_MODEL` | `whisper-large-v3-turbo` |
+   | `FPT_API_KEY` | key FPT.AI (TTS) |
+   | `TTS_PRIMARY` | `fpt` (tuỳ chọn) |
 
 4. Create → đợi build → được URL, ví dụ `https://voicego-api.onrender.com`.
 5. **Seed dữ liệu demo** (1 lần):
