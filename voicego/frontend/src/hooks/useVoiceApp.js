@@ -224,6 +224,20 @@ export default function useVoiceApp() {
     startListening(true);
   }, [startListening, stopListening, dispatch]);
 
+  // ---- Connection fallback ----
+  // The LLM agent is the ONLY source of destinations. If it's unreachable we do
+  // NOT guess a place locally (that produced wrong places like "Điện Biên Phủ" +
+  // NaN price) — we just ask the user to retry.
+  // PHẢI khai báo TRƯỚC _send: _send có nó trong dependency array, mà dep array được
+  // đánh giá ngay lúc render -> đặt sau sẽ ném TDZ "Cannot access ... before
+  // initialization" và làm trắng cả trang.
+  const _localFallback = useCallback(() => {
+    const msg = 'Xin lỗi, mình chưa kết nối được máy chủ. Bạn thử nói lại sau giây lát nhé.';
+    dispatch({ type: 'SET_STATUS', payload: { main: 'Chưa kết nối được trợ lý', sub: 'Kiểm tra mạng rồi thử lại' } });
+    _streamText(msg);
+    speak(msg).catch(console.error);
+  }, [dispatch, _streamText]);
+
   // ---- Send a turn to the agent (or local fallback) ----
   const _send = useCallback(async (text) => {
     if (!text || busyRef.current) return;
@@ -313,17 +327,6 @@ export default function useVoiceApp() {
     }
   }, [dispatch, _autoListen, _localFallback]);
   sendRef.current = _send;
-
-  // ---- Connection fallback ----
-  // The LLM agent is the ONLY source of destinations. If it's unreachable we do
-  // NOT guess a place locally (that produced wrong places like "Điện Biên Phủ" +
-  // NaN price) — we just ask the user to retry.
-  const _localFallback = useCallback(() => {
-    const msg = 'Xin lỗi, mình chưa kết nối được máy chủ. Bạn thử nói lại sau giây lát nhé.';
-    dispatch({ type: 'SET_STATUS', payload: { main: 'Chưa kết nối được trợ lý', sub: 'Kiểm tra mạng rồi thử lại' } });
-    _streamText(msg);
-    speak(msg).catch(console.error);
-  }, [dispatch, _streamText]);
 
   // ---- Booking overlay + realtime handoff ----
   const _showBooked = useCallback(async (booked, reply) => {
