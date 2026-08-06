@@ -47,67 +47,69 @@ export default class VoiceRecorder {
         }
         this.audioContext = sharedAudioContext;
 
-        this.stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: { 
-                echoCancellation: true, 
-                noiseSuppression: true, 
-                autoGainControl: true 
-            } 
-        });
+        if (!this.stream) {
+            this.stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { 
+                    echoCancellation: true, 
+                    noiseSuppression: true, 
+                    autoGainControl: true 
+                } 
+            });
 
-        
-        this.source = this.audioContext.createMediaStreamSource(this.stream);
-        // ScriptProcessor is deprecated but the simplest cross-browser PCM tap.
-        this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-        this.chunks = [];
-        this.recording = true;
+            this.source = this.audioContext.createMediaStreamSource(this.stream);
+            // ScriptProcessor is deprecated but the simplest cross-browser PCM tap.
+            this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+            
+            this.processor.onaudioprocess = (e) => {
+                if (!this.recording) return;
+                const data = e.inputBuffer.getChannelData(0);
+                this.chunks.push(new Float32Array(data));
 
-        this.processor.onaudioprocess = (e) => {
-            if (!this.recording) return;
-            const data = e.inputBuffer.getChannelData(0);
-            this.chunks.push(new Float32Array(data));
-
-            if (this.onAutoStop && !this._autoStopped) {
-                let sum = 0;
-                for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-                const rms = Math.sqrt(sum / data.length);
-                const now = performance.now();
-                if (!this._lastLog || now - this._lastLog > 1000) {
-                    console.log(`[voiceRecorder] RMS: ${rms.toFixed(5)} | Threshold: ${this.speechThreshold}`);
-                    this._lastLog = now;
-                }
-                if (rms > this.speechThreshold) {
-                    if (!this._speechStarted) {
-                        this._speechStarted = true;
-                        this._silenceStart = null;
-                        if (this.onSpeechStart && !this._autoStopped) {
-                            try { this.onSpeechStart(); } catch (err) {}
-                        }
-                    } else {
-                        this._silenceStart = null;
+                if (this.onAutoStop && !this._autoStopped) {
+                    let sum = 0;
+                    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+                    const rms = Math.sqrt(sum / data.length);
+                    const now = performance.now();
+                    if (!this._lastLog || now - this._lastLog > 1000) {
+                        console.log(`[voiceRecorder] RMS: ${rms.toFixed(5)} | Threshold: ${this.speechThreshold}`);
+                        this._lastLog = now;
                     }
-                } else if (this._speechStarted) {
-                    if (this._silenceStart == null) this._silenceStart = now;
-                    else if (now - this._silenceStart > this.silenceMs) {
+                    if (rms > this.speechThreshold) {
+                        if (!this._speechStarted) {
+                            this._speechStarted = true;
+                            this._silenceStart = null;
+                            if (this.onSpeechStart && !this._autoStopped) {
+                                try { this.onSpeechStart(); } catch (err) {}
+                            }
+                        } else {
+                            this._silenceStart = null;
+                        }
+                    } else if (this._speechStarted) {
+                        if (this._silenceStart == null) this._silenceStart = now;
+                        else if (now - this._silenceStart > this.silenceMs) {
+                            this._autoStopped = true;
+                            try { this.onAutoStop(); } catch (err) {}
+                        }
+                    } else if (now - this._t0 > this.noSpeechMs) {
+                        // Nothing said at all -> give up so we can re-prompt.
                         this._autoStopped = true;
                         try { this.onAutoStop(); } catch (err) {}
                     }
-                } else if (now - this._t0 > this.noSpeechMs) {
-                    // Nothing said at all -> give up so we can re-prompt.
-                    this._autoStopped = true;
-                    try { this.onAutoStop(); } catch (err) {}
                 }
-            }
-        };
+            };
 
-        this.source.connect(this.processor);
-        
-        // Mute the processor output so it doesn't feed back into the speaker and trigger AEC ducking
-        // Use a tiny non-zero gain so iOS Safari doesn't optimize it away and stop processing
-        this.gainNode = this.audioContext.createGain();
-        this.gainNode.gain.value = 0.01;
-        this.processor.connect(this.gainNode);
-        this.gainNode.connect(this.audioContext.destination);
+            this.source.connect(this.processor);
+            
+            // Mute the processor output so it doesn't feed back into the speaker and trigger AEC ducking
+            // Use a tiny non-zero gain so iOS Safari doesn't optimize it away and stop processing
+            this.gainNode = this.audioContext.createGain();
+            this.gainNode.gain.value = 0.01;
+            this.processor.connect(this.gainNode);
+            this.gainNode.connect(this.audioContext.destination);
+        }
+
+        this.chunks = [];
+        this.recording = true;
     }
 
     stop() {
@@ -121,12 +123,9 @@ export default class VoiceRecorder {
         let offset = 0;
         this.chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
 
-        // Tear down audio nodes / mic
-        try { this.processor.disconnect(); } catch (e) {}
-        try { this.source.disconnect(); } catch (e) {}
-        if (this.stream) this.stream.getTracks().forEach(t => t.stop());
-        // Do not close the shared AudioContext so it can be reused later without user gesture
-        // if (this.audioContext) this.audioContext.close();
+        // We DO NOT stop the microphone stream or disconnect the nodes here.
+        // Re-requesting getUserMedia while audio is playing on Android Chrome causes AEC breakage and silence.
+        // Instead, we just keep the stream alive and toggle this.recording = false.
 
         // If the user didn't speak at all, don't return an audio blob (prevents silent backend STT calls)
         if (!this._speechStarted) {
