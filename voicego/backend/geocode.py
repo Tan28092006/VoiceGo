@@ -12,6 +12,7 @@ Layered fallback (so a real place still resolves when one source is down):
 The LLM never invents coordinates as ground truth — coords come from a geocoder,
 and the booking only proceeds after the user confirms the read-back address.
 """
+import os
 import re
 import json
 import time
