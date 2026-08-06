@@ -151,7 +151,7 @@ export default function useVoiceApp() {
     try {
       await recorder.start({
         silenceMs: 950,          // cut off a bit sooner -> lower latency
-        noSpeechMs: 7000,
+        noSpeechMs: 20000,       // give plenty of time (20s) so it doesn't timeout while long TTS is playing
         onSpeechStart: () => {
           console.log('[Barge-in] Speech detected! Stopping TTS...');
           stopSpeech(); // Barge-in: cut off AI immediately when user speaks

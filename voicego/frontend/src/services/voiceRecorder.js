@@ -1,5 +1,15 @@
 let sharedAudioContext = null;
 
+export function initSharedAudioContext() {
+    if (!sharedAudioContext) {
+        sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (sharedAudioContext.state === 'suspended') {
+        sharedAudioContext.resume().catch(() => {});
+    }
+    return sharedAudioContext;
+}
+
 export default class VoiceRecorder {
     constructor(targetRate = 16000) {
         this.targetRate = targetRate;
@@ -27,6 +37,16 @@ export default class VoiceRecorder {
         this._autoStopped = false;
         this._t0 = (typeof performance !== "undefined" ? performance.now() : 0);
 
+        // MUST be created/resumed BEFORE any async 'await' to satisfy iOS Safari user gesture requirements
+        if (!sharedAudioContext) {
+            sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (sharedAudioContext.state === 'suspended') {
+            // Kick off resume immediately in the sync call stack
+            sharedAudioContext.resume().catch(() => {});
+        }
+        this.audioContext = sharedAudioContext;
+
         this.stream = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
                 echoCancellation: true, 
@@ -34,14 +54,7 @@ export default class VoiceRecorder {
                 autoGainControl: true 
             } 
         });
-        
-        if (!sharedAudioContext) {
-            sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (sharedAudioContext.state === 'suspended') {
-            try { await sharedAudioContext.resume(); } catch (e) {}
-        }
-        this.audioContext = sharedAudioContext;
+
         
         this.source = this.audioContext.createMediaStreamSource(this.stream);
         // ScriptProcessor is deprecated but the simplest cross-browser PCM tap.
@@ -90,8 +103,9 @@ export default class VoiceRecorder {
         this.source.connect(this.processor);
         
         // Mute the processor output so it doesn't feed back into the speaker and trigger AEC ducking
+        // Use a tiny non-zero gain so iOS Safari doesn't optimize it away and stop processing
         this.gainNode = this.audioContext.createGain();
-        this.gainNode.gain.value = 0;
+        this.gainNode.gain.value = 0.01;
         this.processor.connect(this.gainNode);
         this.gainNode.connect(this.audioContext.destination);
     }
@@ -113,6 +127,11 @@ export default class VoiceRecorder {
         if (this.stream) this.stream.getTracks().forEach(t => t.stop());
         // Do not close the shared AudioContext so it can be reused later without user gesture
         // if (this.audioContext) this.audioContext.close();
+
+        // If the user didn't speak at all, don't return an audio blob (prevents silent backend STT calls)
+        if (!this._speechStarted) {
+            return null;
+        }
 
         const downsampled = this._downsample(merged, inputRate, this.targetRate);
         return this._encodeWav(downsampled, this.targetRate);

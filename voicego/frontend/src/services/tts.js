@@ -1,4 +1,5 @@
 import { BACKEND_URL } from './config';
+import { initSharedAudioContext } from './voiceRecorder';
 
 // ONE reusable audio element. Mobile blocks audio started outside a user gesture;
 // by reusing a single element that got unlocked by the greeting (played right
@@ -14,6 +15,7 @@ function audioEl() {
 
 // Call from a user gesture (login / tap) to unlock audio + speech on mobile.
 export function unlockAudio() {
+  try { initSharedAudioContext(); } catch (e) {} // Unlock mic context for mobile barge-in
   try {
     const a = audioEl();
     a.muted = true;
