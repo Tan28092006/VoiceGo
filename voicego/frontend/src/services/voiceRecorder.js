@@ -19,7 +19,7 @@ export default class VoiceRecorder {
         this.onSpeechStart = opts.onSpeechStart || null;
         this.silenceMs = opts.silenceMs || 1300;
         this.noSpeechMs = opts.noSpeechMs || 6000;   // give up if nothing is said
-        this.speechThreshold = opts.speechThreshold || 0.008; // Lowered from 0.018 for better sensitivity
+        this.speechThreshold = opts.speechThreshold || 0.001; // Extremely sensitive for AEC ducking
         this._speechStarted = false;
         this._silenceStart = null;
         this._autoStopped = false;
@@ -81,7 +81,12 @@ export default class VoiceRecorder {
         };
 
         this.source.connect(this.processor);
-        this.processor.connect(this.audioContext.destination);
+        
+        // Mute the processor output so it doesn't feed back into the speaker and trigger AEC ducking
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = 0;
+        this.processor.connect(this.gainNode);
+        this.gainNode.connect(this.audioContext.destination);
     }
 
     stop() {

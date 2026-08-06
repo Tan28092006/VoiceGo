@@ -65,6 +65,13 @@ export function browserSpeak(text) {
 export function stop() {
   console.log('[TTS] stop() called. Halting audio playback.');
   genToken++;   // invalidate any in-flight speak()
-  if (el) { try { el.pause(); } catch (e) {} }
+  if (el) { 
+    try { 
+      el.pause(); 
+      el.currentTime = 0;
+      el.removeAttribute('src');
+      el.load();
+    } catch (e) {} 
+  }
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 }
