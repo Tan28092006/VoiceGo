@@ -246,7 +246,7 @@ def _do_resolve(query, pk):
     locs = r["locations"]
     if len(locs) >= 2:                       # several campuses/branches -> let user pick
         merged = [{"name": l["name"], "address": l.get("address"),
-                   "lat": l["lat"], "lng": l["lng"]} for l in locs[:4]]
+                   "lat": l["lat"], "lng": l["lng"], "verified": l.get("verified")} for l in locs[:4]]
         return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
 
     loc = locs[0]
