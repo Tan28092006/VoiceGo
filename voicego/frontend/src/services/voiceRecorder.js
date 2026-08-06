@@ -1,5 +1,26 @@
 let sharedAudioContext = null;
 
+// Mở trang với ?debug=1 để hiện đồng hồ RMS/ngưỡng ngay trên màn hình — điện thoại
+// không xem được console, mà barge-in thì phải biết mic có thật sự nghe được hay không.
+const DEBUG_VAD = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('debug') === '1';
+
+function debugBadge(text) {
+    if (!DEBUG_VAD) return;
+    let d = document.getElementById('vad-debug');
+    if (!d) {
+        d = document.createElement('div');
+        d.id = 'vad-debug';
+        Object.assign(d.style, {
+            position: 'fixed', bottom: '6px', left: '6px', zIndex: 2147483647,
+            background: 'rgba(0,0,0,.78)', color: '#0f0', font: '12px monospace',
+            padding: '4px 7px', borderRadius: '4px', pointerEvents: 'none',
+        });
+        document.body.appendChild(d);
+    }
+    d.textContent = text;
+}
+
 export function initSharedAudioContext() {
     if (!sharedAudioContext) {
         sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -31,10 +52,14 @@ export default class VoiceRecorder {
         this.onSpeechStart = opts.onSpeechStart || null;
         this.silenceMs = opts.silenceMs || 1300;
         this.noSpeechMs = opts.noSpeechMs || 6000;   // give up if nothing is said
-        this.speechThreshold = opts.speechThreshold || 0.001; // Extremely sensitive for AEC ducking
+        this.speechThreshold = opts.speechThreshold || 0.0015;  // sàn tuyệt đối
+        this.floorMult = opts.floorMult || 3.5;   // phải vượt nền bao nhiêu lần mới là nói
+        this.warmupMs = opts.warmupMs || 400;     // để nền kịp học mức echo của TTS
         this._speechStarted = false;
         this._silenceStart = null;
         this._autoStopped = false;
+        this._hits = 0;
+        this._floor = null;
         this._t0 = (typeof performance !== "undefined" ? performance.now() : 0);
 
         // MUST be created/resumed BEFORE any async 'await' to satisfy iOS Safari user gesture requirements
@@ -48,12 +73,15 @@ export default class VoiceRecorder {
         this.audioContext = sharedAudioContext;
 
         if (!this.stream) {
-            this.stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { 
-                    echoCancellation: true, 
-                    noiseSuppression: true, 
-                    autoGainControl: true 
-                } 
+            // AEC BẬT (không được nghe lại chính mình) nhưng NS/AGC TẮT: trên Android
+            // Chrome hai cái đó mới là thứ gate mic xuống ~0 khi loa đang phát — đúng
+            // thứ giết barge-in. AEC một mình vẫn khử phần lớn tiếng TTS vọng lại.
+            this.stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                },
             });
 
             this.source = this.audioContext.createMediaStreamSource(this.stream);
@@ -70,40 +98,59 @@ export default class VoiceRecorder {
                     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
                     const rms = Math.sqrt(sum / data.length);
                     const now = performance.now();
-                    if (!this._lastLog || now - this._lastLog > 1000) {
-                        console.log(`[voiceRecorder] RMS: ${rms.toFixed(5)} | Threshold: ${this.speechThreshold}`);
-                        this._lastLog = now;
+
+                    // Ngưỡng THÍCH NGHI thay cho ngưỡng cố định: bám theo mức "nền" hiện
+                    // tại và đòi khung âm phải vượt hẳn lên. Một con số cố định không thể
+                    // vừa phục vụ mic bị AEC gate (nền ~0.0005) vừa phục vụ mic rò tiếng
+                    // TTS từ loa (nền ~0.01 -> sẽ tự cắt lời chính nó).
+                    if (!this._speechStarted) {
+                        this._floor = this._floor == null ? rms : this._floor * 0.85 + rms * 0.15;
                     }
-                    if (rms > this.speechThreshold) {
-                        if (!this._speechStarted) {
+                    const threshold = Math.max(this.speechThreshold, (this._floor || 0) * this.floorMult);
+                    const warming = now - this._t0 < this.warmupMs;   // chờ nền ổn định
+
+                    if (!this._dbgAt || now - this._dbgAt > 200) {
+                        this._dbgAt = now;
+                        debugBadge(`rms ${rms.toFixed(4)} | th ${threshold.toFixed(4)}`
+                            + ` | floor ${(this._floor || 0).toFixed(4)}`
+                            + ` | ${this._speechStarted ? 'SPEAK' : (warming ? 'warm' : 'idle')}`);
+                    }
+
+                    if (rms > threshold && !warming) {
+                        this._hits = (this._hits || 0) + 1;
+                        this._silenceStart = null;
+                        // Cần 2 khung liên tiếp (~170ms) mới coi là nói, để một tiếng cộp
+                        // hay va chạm không cắt mất lời AI đang đọc.
+                        if (!this._speechStarted && this._hits >= 2) {
                             this._speechStarted = true;
-                            this._silenceStart = null;
-                            if (this.onSpeechStart && !this._autoStopped) {
+                            if (this.onSpeechStart) {
                                 try { this.onSpeechStart(); } catch (err) {}
                             }
-                        } else {
-                            this._silenceStart = null;
                         }
-                    } else if (this._speechStarted) {
-                        if (this._silenceStart == null) this._silenceStart = now;
-                        else if (now - this._silenceStart > this.silenceMs) {
+                    } else {
+                        this._hits = 0;
+                        if (this._speechStarted) {
+                            if (this._silenceStart == null) this._silenceStart = now;
+                            else if (now - this._silenceStart > this.silenceMs) {
+                                this._autoStopped = true;
+                                try { this.onAutoStop(); } catch (err) {}
+                            }
+                        } else if (now - this._t0 > this.noSpeechMs) {
+                            // Nothing said at all -> give up so we can re-prompt.
                             this._autoStopped = true;
                             try { this.onAutoStop(); } catch (err) {}
                         }
-                    } else if (now - this._t0 > this.noSpeechMs) {
-                        // Nothing said at all -> give up so we can re-prompt.
-                        this._autoStopped = true;
-                        try { this.onAutoStop(); } catch (err) {}
                     }
                 }
             };
 
             this.source.connect(this.processor);
             
-            // Mute the processor output so it doesn't feed back into the speaker and trigger AEC ducking
-            // Use a tiny non-zero gain so iOS Safari doesn't optimize it away and stop processing
+            // ScriptProcessor chỉ chạy khi được nối tới destination, nhưng gain PHẢI = 0:
+            // gain 0.01 trước đây đẩy tiếng mic ra loa -> tự tạo echo -> AEC/ducking siết
+            // mic mạnh hơn, chính là vòng lặp làm barge-in chết.
             this.gainNode = this.audioContext.createGain();
-            this.gainNode.gain.value = 0.01;
+            this.gainNode.gain.value = 0;
             this.processor.connect(this.gainNode);
             this.gainNode.connect(this.audioContext.destination);
         }
