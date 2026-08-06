@@ -17,6 +17,7 @@ import re
 import json
 import time
 import math
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -25,16 +26,15 @@ from places_db import lookup as _local_lookup, lookup_all as _lookup_all_pd
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
-# Google Places API (New) — most accurate for Vietnamese place names. Used as the
-# top geocoding layer when GOOGLE_MAPS_API_KEY is set; else everything falls back
-# to the existing Gemini/Nominatim layers (zero behaviour change without a key).
-GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
-GOOGLE_PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
-
 # Mapbox geocoding — strong VN coverage, generous free tier, no billing hassle.
-# Used right after Google (which no-ops without a working key). Gated by token.
+# Chạy SONG SONG với Gemini để cross-check toạ độ mà không tốn thêm thời gian.
 MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
 MAPBOX_GEOCODE_URL = "https://api.mapbox.com/geocoding/v5/mapbox.places"
+
+# Gemini (grounded) là bộ não chính, nhưng KHÔNG tin hẳn: toạ độ được đối chiếu
+# với geocoder thật (Mapbox, rồi Nominatim). Lệch quá ngưỡng này coi như không
+# khớp -> hạ cờ verified để tầng trên biết mà thận trọng.
+VERIFY_RADIUS_KM = 3.0
 
 # Service model: instead of a fixed city box, we bias + limit geocoding to a
 # radius around the PICKUP location (the user's GPS). This makes the app work
@@ -68,52 +68,6 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     dl = math.radians(lng2 - lng1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
-def _google_places(text, center_lat=None, center_lng=None, limit=5):
-    """Google Places API (New) Text Search — best coverage for VN place names.
-    Returns [{name, address, lat, lng}] biased to the pickup area, or [] when no
-    key / no result / error (caller falls back to the other layers)."""
-    if not GOOGLE_MAPS_API_KEY or not (text or "").strip():
-        return []
-    body = {
-        "textQuery": text,
-        "languageCode": "vi",
-        "regionCode": "VN",
-        "maxResultCount": max(1, min(int(limit), 10)),
-    }
-    if center_lat is not None and center_lng is not None:
-        # locationBias circle radius is capped at 50 km by the API.
-        body["locationBias"] = {"circle": {
-            "center": {"latitude": center_lat, "longitude": center_lng},
-            "radius": min(SERVICE_RADIUS_KM * 1000.0, 50000.0),
-        }}
-    try:
-        r = requests.post(
-            GOOGLE_PLACES_URL,
-            json=body,
-            headers={
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-                "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
-            },
-            timeout=10,
-        )
-        data = r.json()
-    except Exception:  # noqa: BLE001
-        return []
-    out = []
-    for p in (data.get("places") or []):
-        loc = p.get("location") or {}
-        lat, lng = loc.get("latitude"), loc.get("longitude")
-        if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
-            continue
-        name = (p.get("displayName") or {}).get("text") or text
-        addr = (p.get("formattedAddress") or name).replace(", Việt Nam", "").strip()
-        out.append({"name": name, "address": addr, "lat": float(lat), "lng": float(lng)})
-        if len(out) >= limit:
-            break
-    return out
 
 
 def _mapbox_geocode(text, center_lat=None, center_lng=None, limit=5):
@@ -174,9 +128,19 @@ def _gemini_call(prompt, grounded, retries=2):
         return None
 
     client = genai.Client(api_key=GEMINI_API_KEY)
-    cfg = None
+
+    # thinking_budget=0 -> TẮT "thinking" của Gemini 2.5 Flash (mặc định BẬT).
+    # Đo thực tế trên chính prompt này: 16s -> 3.2s, grounding vẫn chạy thật
+    # (groundingMetadata còn nguyên) và toạ độ vẫn khớp thực địa. Đây là khoản
+    # tiết kiệm lớn nhất của cả luồng — tra địa điểm là tra cứu, không cần suy luận.
+    kw = {"thinking_config": types.ThinkingConfig(thinking_budget=0)}
     if grounded:
-        cfg = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
+        kw["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+    try:
+        cfg = types.GenerateContentConfig(**kw)
+    except TypeError:
+        # SDK cũ chưa có thinking_config -> chạy như trước, chỉ mất phần tăng tốc.
+        cfg = (types.GenerateContentConfig(tools=kw["tools"]) if grounded else None)
 
     for i in range(retries):
         try:
@@ -247,9 +211,8 @@ def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
     center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
     center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
 
-    # Best providers first: Google Places (if a working key), then Mapbox (if a
-    # token). Each no-ops to [] when unavailable, so we fall through cleanly.
-    for provider in (_google_places, _mapbox_geocode):
+    # Mapbox trước (no-op về [] khi thiếu token), rồi rơi xuống Nominatim bên dưới.
+    for provider in (_mapbox_geocode,):
         hits = provider(text, center_lat, center_lng, limit=limit)
         if not hits:
             continue
@@ -336,25 +299,19 @@ def _short_address(addr, name=""):
 
 
 def _build_prompt(text, user_lat, user_lng, grounded):
-    loc_hint = ""
-    if user_lat is not None and user_lng is not None:
-        loc_hint = f"Vị trí người dùng: {user_lat}, {user_lng}. Ưu tiên cơ sở GẦN vị trí này.\n"
-    how = ("Hãy DÙNG TÌM KIẾM để tra thông tin THẬT.\n" if grounded
-           else "Dựa trên hiểu biết của bạn về địa điểm ở Việt Nam.\n")
+    """Prompt CỐ TÌNH ngắn: mỗi câu thừa là token phải sinh/đọc thêm, mà đây là
+    tác vụ TRA CỨU chứ không phải suy luận. Giữ đúng 4 điều bắt buộc: phân loại
+    query_type, liệt kê chi nhánh, địa chỉ ngắn, toạ độ DMS."""
+    near = f" gần {user_lat},{user_lng}" if user_lat is not None and user_lng is not None else ""
+    how = "TÌM KIẾM để lấy dữ liệu THẬT" if grounded else "Dựa trên hiểu biết của bạn"
     return (
-        "Bạn là bộ định vị cho ứng dụng gọi xe ở Việt Nam. " + how +
-        f'Người dùng muốn đến: "{text}"\n' + loc_hint +
-        'Phân loại query_type: "address" nếu là ĐỊA CHỈ CHI TIẾT (có số nhà/số cụ thể); '
-        '"poi" nếu là TÊN địa điểm/landmark/doanh nghiệp/trường học.\n'
-        "Nếu địa điểm có NHIỀU cơ sở/chi nhánh trong khu vực, LIỆT KÊ TẤT CẢ (tối đa 4), gần người dùng trước. "
-        "Nếu chỉ một nơi, trả về một phần tử. full_address NGẮN GỌN: số nhà + đường + "
-        "phường/quận, KHÔNG kèm quốc gia/mã bưu chính.\n"
-        "Toạ độ trả ở dạng DMS (độ, phút, giây tới 0.1 giây) — CHÍNH XÁC hơn thập phân; "
-        "đặt pin ĐÚNG địa điểm, không lệch sang toà nhà kế bên. "
-        "Ví dụ: lat_dms = 10 độ 47 phút 09.1 giây Bắc, lng_dms = 106 độ 42 phút 09.8 giây Đông.\n"
-        "Trả về DUY NHẤT một JSON (không giải thích):\n"
-        '{"query_type":"poi|address","locations":[{"name":"<tên>","full_address":"<địa chỉ ngắn gọn>",'
-        '"lat_dms":"<vĩ độ độ-phút-giây>","lng_dms":"<kinh độ độ-phút-giây>"}]}'
+        f'Bộ định vị cho app gọi xe ở Việt Nam. {how}. Địa điểm: "{text}"{near}.\n'
+        'query_type="address" nếu có số nhà cụ thể, ngược lại "poi".\n'
+        "Có nhiều chi nhánh trong vùng thì liệt kê tối đa 4, gần trước.\n"
+        "full_address ngắn: số nhà + đường + phường/quận (không quốc gia, không mã bưu chính).\n"
+        "Toạ độ DMS tới 0.1 giây, đặt pin ĐÚNG địa điểm (vd 10°47'09.1\"N, 106°42'09.8\"E).\n"
+        "CHỈ trả JSON, không giải thích:\n"
+        '{"query_type":"poi|address","locations":[{"name":"","full_address":"","lat_dms":"","lng_dms":""}]}'
     )
 
 
@@ -383,65 +340,156 @@ def _gemini_locations(text, user_lat, user_lng):
     return {"query_type": data.get("query_type", "poi"), "locations": out}
 
 
+def _pin(loc, center_lat, center_lng, is_address=False, pickup=None):
+    """Chốt toạ độ để ghim lên bản đồ. Trả (loc, verified).
+
+    Nguyên tắc: **Gemini quyết định ĐÓ LÀ CHỖ NÀO, geocoder thật quyết định NÓ
+    NẰM Ở ĐÂU.** Grounding đọc web nên tên + địa chỉ chữ đáng tin; còn toạ độ số
+    thì đo được là nó bịa.
+
+    Ca thật đã bắt được: hỏi "trường trung học thực hành ĐH Sư phạm TPHCM",
+    Gemini trả địa chỉ ĐÚNG (280 An Dương Vương, P4, Q5) nhưng toạ độ lại là
+    10.776889,106.700889 — cách ĐIỂM ĐÓN truyền vào prompt đúng 2 mét, tức nó
+    chép lại gợi ý vị trí. Mapbox cho 10.757776,106.674800, lệch 3.56 km.
+
+    Nên:
+      - Toạ độ trùng điểm đón (<150 m) => coi như KHÔNG có, đây là dấu hiệu bịa.
+      - Có geocoder trả kết quả => geocoder thắng, trừ khi là POI và hai bên đã
+        khớp nhau (lúc đó giữ toạ độ Gemini vì nó ghim đúng toà nhà, còn
+        geocoder hay rơi ra giữa đường).
+      - Không geocoder nào trả => đành giữ Gemini nhưng verified=False.
+    """
+    g = None
+    if isinstance(loc.get("lat"), (int, float)) and isinstance(loc.get("lng"), (int, float)):
+        g = (loc["lat"], loc["lng"])
+    if g and pickup and _haversine_km(g[0], g[1], pickup[0], pickup[1]) <= 0.15:
+        g = None                                   # chép lại điểm đón -> vứt
+
+    # Tra bằng ĐỊA CHỈ, không phải tên. Đo trên chính ca trường THTH ĐHSP, lấy
+    # mốc độc lập (xembando.vn 10.7608458,106.682471):
+    #   Nominatim + địa chỉ   ->    47 m
+    #   Mapbox    + địa chỉ   ->   905 m
+    #   Mapbox    + tên       ->  4.0 km
+    #   Mapbox    + tên+đ/c   ->  272 km  (nhảy ra Ninh Thuận)
+    # Nên Nominatim đi trước, Mapbox chỉ là lưới đỡ khi Nominatim không có gì.
+    # ── Gemini = bộ não hiểu ý, Nominatim = chốt toạ độ chính xác ──
+    # POI: tra TÊN trước (Nominatim tìm "Lăng Chủ tịch Hồ Chí Minh" chuẩn 41m,
+    #       nhưng địa chỉ "2 Hùng Vương, Điện Biên, Ba Đình" thì fail).
+    # Address: tra ĐỊA CHỈ trước (số nhà + đường chính xác hơn).
+    name = loc.get("name") or ""
+    addr = loc.get("address") or ""
+    primary = addr if is_address else name
+    fallback = name if is_address else addr
+
+    ref = None
+    nm = _nominatim_full(primary, center_lat, center_lng) if primary.strip() else None
+    if not nm and fallback.strip() and fallback != primary:
+        nm = _nominatim_full(fallback, center_lat, center_lng)
+    if nm:
+        ref = {"name": loc["name"], "address": addr or nm[2],
+               "lat": nm[0], "lng": nm[1]}
+    else:
+        query = addr or name
+        ref = _mapbox_first(query, center_lat, center_lng)
+
+    if not ref:
+        return loc, False                          # không có gì để đối chiếu
+    if g and not is_address and _haversine_km(g[0], g[1], ref["lat"], ref["lng"]) <= VERIFY_RADIUS_KM:
+        return loc, True                           # POI khớp -> giữ pin của Gemini
+    return {"name": loc["name"], "address": loc.get("address") or ref.get("address"),
+            "lat": ref["lat"], "lng": ref["lng"]}, True
+
+
+def verify_location(loc, user_lat=None, user_lng=None, is_address=False):
+    """Chốt toạ độ cho MỘT địa điểm — gọi khi người dùng đã chọn xong candidate.
+
+    Tách riêng vì Nominatim công cộng giới hạn ~1 request/giây: không thể đối
+    chiếu cả 4 candidate cùng lúc. Danh sách candidate trả về nhanh (toạ độ thô
+    của Gemini, đủ để hiển thị), rồi đúng cái được chọn mới đem đi chốt.
+    """
+    center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
+    center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
+    pickup = (user_lat, user_lng) if user_lat is not None else None
+    out, ok = _pin(loc, center_lat, center_lng, is_address, pickup)
+    out["verified"] = ok
+    if user_lat is not None:
+        out["distanceKm"] = round(_haversine_km(user_lat, user_lng, out["lat"], out["lng"]), 1)
+    return out
+
+
 def resolve_locations(text, user_lat=None, user_lng=None):
-    """Resolve a spoken place to 1..N real locations (campuses/branches) with coords.
-    Gemini (Google-Search grounded) drives it and may return several branches -> the
-    agent offers them as candidates. POI coords come straight from Gemini (accurate);
-    a single detailed ADDRESS is cross-checked against a real geocoder (LLM coords
-    drift on house numbers). NO place is hardcoded — arbitrary places work."""
+    """Giải mã một địa điểm nói ra thành 1..N vị trí thật (chi nhánh/cơ sở).
+
+    Gemini (grounded) là bộ não chính — nó xử được địa điểm bất kỳ, không hardcode.
+    Nhưng KHÔNG tin hẳn: mọi toạ độ đều được đối chiếu với geocoder thật
+    (Mapbox, rồi Nominatim) qua `_verify_coord`.
+
+    Mapbox chạy SONG SONG với Gemini, không nối tiếp: Mapbox ~0.5s còn Gemini
+    ~3s, nên phần cross-check gần như miễn phí về thời gian, và khi Gemini hỏng
+    thì đã có sẵn kết quả Mapbox để dùng ngay thay vì phải gọi lại.
+    """
     if not text.strip():
         return {"ok": False, "reason": "empty"}
     center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
     center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
 
-    def fin(loc):
+    def fin(loc, verified=True):
         d = round(_haversine_km(user_lat, user_lng, loc["lat"], loc["lng"]), 1) if user_lat is not None else None
         return {"name": loc["name"], "address": _short_address(loc.get("address"), loc["name"]),
-                "lat": loc["lat"], "lng": loc["lng"], "distanceKm": d}
+                "lat": loc["lat"], "lng": loc["lng"], "distanceKm": d, "verified": verified}
 
     def within(loc):
         return _within_service(loc["lat"], loc["lng"], center_lat, center_lng)
 
-    # 0) Verified gazetteer (instant, exact; may already hold multiple branches).
+    # 0) Gazetteer đã kiểm chứng (tức thì, chính xác; có thể sẵn nhiều chi nhánh).
     ga = [{"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]}
           for c in _lookup_all_pd(text)]
     ga = [l for l in ga if within(l)]
     if ga:
         return {"ok": True, "query_type": "poi", "source": "verified", "locations": [fin(l) for l in ga[:4]]}
 
-    # 1) Google Places (if a working key) — precise, may return several branches.
-    gp = [p for p in _google_places(text, center_lat, center_lng, limit=4) if within(p)]
-    if gp:
-        return {"ok": True, "query_type": "poi", "source": "google_places", "locations": [fin(p) for p in gp[:4]]}
+    # 1) Gemini grounded + Mapbox CHẠY SONG SONG: Mapbox (~0.5s) chạy nấp dưới
+    # bóng Gemini (~3.2s) nên không tốn thêm thời gian, và nếu Gemini hỏng/hết
+    # quota thì đã có sẵn lưới đỡ, khỏi phải gọi lại.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_gem = pool.submit(_gemini_locations, text, user_lat, user_lng)
+        f_mb = pool.submit(_mapbox_first, text, center_lat, center_lng)
+        data, mb = f_gem.result(), f_mb.result()
 
-    # 2) Gemini grounded — arbitrary places, may return multiple branches with real coords.
-    data = _gemini_locations(text, user_lat, user_lng)
     if data and data.get("locations"):
         locs = [l for l in data["locations"] if within(l)]
         if not locs:
             return {"ok": False, "reason": "out_of_area"}
         if user_lat is not None:
             locs.sort(key=lambda l: _haversine_km(user_lat, user_lng, l["lat"], l["lng"]))
-        # Cross-check ONLY a single detailed-address result (LLM coords drift there):
-        # if a real geocoder lands in the same area, use its (more precise) coord.
-        if data.get("query_type") == "address" and len(locs) == 1:
-            mb = _mapbox_first(locs[0].get("address") or text, center_lat, center_lng)
-            if mb and _haversine_km(mb["lat"], mb["lng"], locs[0]["lat"], locs[0]["lng"]) <= 3:
-                locs[0] = {"name": locs[0]["name"], "address": locs[0].get("address") or mb["address"],
-                           "lat": mb["lat"], "lng": mb["lng"]}
-        return {"ok": True, "query_type": data.get("query_type", "poi"), "source": "grounded",
-                "locations": [fin(l) for l in locs[:4]]}
+        locs = locs[:4]
+        is_addr = data.get("query_type") == "address"
+        pickup = (user_lat, user_lng) if user_lat is not None else None
 
-    # 3) Fallback: Mapbox nearest, then Nominatim raw.
-    mb = _mapbox_first(text, center_lat, center_lng)
-    if mb:
-        return {"ok": True, "query_type": "address", "source": "mapbox", "locations": [fin(mb)]}
+        # NHIỀU cơ sở -> trả ngay để người dùng chọn, CHƯA chốt toạ độ. Việc chốt
+        # để dành cho cái được chọn (agent gọi verify_location). Lý do không đối
+        # chiếu cả 4: Nominatim công cộng giới hạn ~1 req/giây, bắn 4 phát song
+        # song là vi phạm và dễ bị chặn — mà 3 cái kia thường bị bỏ đi.
+        if len(locs) >= 2:
+            return {"ok": True, "query_type": data.get("query_type", "poi"),
+                    "source": "grounded", "locations": [fin(l, False) for l in locs]}
+
+        # Chỉ MỘT nơi -> đó chính là điểm đến, chốt toạ độ luôn.
+        loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)
+        return {"ok": True, "query_type": data.get("query_type", "poi"),
+                "source": "grounded" if ok0 else "grounded_unverified",
+                "locations": [fin(loc0, ok0)]}
+
+    # 2) Gemini hỏng/không có key -> Nominatim trước (đo được là chính xác hơn
+    # hẳn Mapbox ở VN), rồi mới tới kết quả Mapbox đã chạy sẵn song song.
     coords = _nominatim(text, center_lat, center_lng) or _nominatim(f"{text}, Việt Nam")
     if coords:
         if not _within_service(coords[0], coords[1], center_lat, center_lng):
             return {"ok": False, "reason": "out_of_area"}
         return {"ok": True, "query_type": "address", "source": "nominatim_raw",
                 "locations": [fin({"name": text, "address": text, "lat": coords[0], "lng": coords[1]})]}
+    if mb:
+        return {"ok": True, "query_type": "address", "source": "mapbox", "locations": [fin(mb)]}
     return {"ok": False, "reason": "not_found"}
 
 

@@ -18,7 +18,7 @@ import time
 import unicodedata
 
 from voice import llm_client, LLM_MODEL
-from geocode import resolve_locations, resolve_destination, _nominatim, _haversine_km
+from geocode import resolve_locations, verify_location, _nominatim, _haversine_km
 from places_db import lookup_all as _lookup_all
 from routing import road_route
 from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request, find_gate_group
@@ -258,7 +258,7 @@ def _do_resolve(query, pk):
             "next": "Hỏi người dùng 'xe máy hay ô tô' TRƯỚC khi get_quote."}
 
 
-def _do_select(msgs, index):
+def _do_select(msgs, index, pk):
     cset = _last_tool(msgs, "candidates")
     cs = (cset or {}).get("candidates") or []
     try:
@@ -268,6 +268,12 @@ def _do_select(msgs, index):
     if i < 0 or i >= len(cs):
         return {"ok": False, "kind": "place", "reason": "bad_index"}
     p = cs[i]
+    # Danh sách candidate trả về với toạ độ THÔ của Gemini (chưa đối chiếu) để
+    # người dùng chọn cho nhanh. Giờ đã biết chọn cái nào -> chốt toạ độ đúng
+    # cái đó bằng geocoder thật, để pin trên bản đồ không lệch.
+    # Chỉ chốt cho candidate từ Gemini; cổng (gate) đã là toạ độ đã kiểm chứng sẵn.
+    if p.get("verified") is False:
+        p = verify_location(p, pk["lat"], pk["lng"])
     # If the picked place has accessible gates AND isn't itself a gate -> offer gates.
     if "accessible" not in p:
         g = _gates_for(p["lat"], p["lng"])
@@ -418,7 +424,7 @@ def run_agent(messages: list[dict], pickup: dict | None = None) -> dict:
                 res = _do_resolve(args.get("query", ""), pk)
                 _apply_place_ui(ui, res)
             elif name == "select_candidate":
-                res = _do_select(msgs, args.get("index"))
+                res = _do_select(msgs, args.get("index"), pk)
                 _apply_place_ui(ui, res)
             elif name == "get_quote":
                 res = _do_quote(msgs, args.get("vehicle", "bike"), pk)

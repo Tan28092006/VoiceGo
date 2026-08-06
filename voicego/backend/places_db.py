@@ -110,6 +110,27 @@ PLACES = [
      "lat": 10.79020, "lng": 106.68790, "aliases": ["chua vinh nghiem", "vinh nghiem"]},
     {"name": "Vạn Hạnh Mall", "address": "Vạn Hạnh Mall, 11 Sư Vạn Hạnh, Phường 12, Quận 10",
      "lat": 10.77076, "lng": 106.66990, "aliases": ["van hanh mall", "van hanh", "su van hanh mall"]},
+
+    # ---- HÀ NỘI: landmark nổi tiếng ----
+    {"name": "Lăng Chủ tịch Hồ Chí Minh", "address": "Lăng Chủ tịch Hồ Chí Minh, 1 Hùng Vương, Ba Đình, Hà Nội",
+     "lat": 21.03678, "lng": 105.83469,
+     "aliases": ["lang bac", "lang chu tich", "lang chu tich ho chi minh", "lang bac ho",
+                 "lang ho chi minh", "lang uncle ho", "ho chi minh mausoleum"]},
+    {"name": "Quảng trường Ba Đình", "address": "Quảng trường Ba Đình, Quận Ba Đình, Hà Nội",
+     "lat": 21.03683, "lng": 105.83411,
+     "aliases": ["quang truong ba dinh", "ba dinh square"]},
+    {"name": "Hồ Hoàn Kiếm", "address": "Hồ Hoàn Kiếm (Hồ Gươm), Quận Hoàn Kiếm, Hà Nội",
+     "lat": 21.02882, "lng": 105.85242,
+     "aliases": ["ho hoan kiem", "ho guom", "ho kiem", "sword lake", "hoan kiem"]},
+    {"name": "Văn Miếu Quốc Tử Giám", "address": "Văn Miếu Quốc Tử Giám, 58 Quốc Tử Giám, Đống Đa, Hà Nội",
+     "lat": 21.02757, "lng": 105.83559,
+     "aliases": ["van mieu", "van mieu quoc tu giam", "quoc tu giam", "temple of literature"]},
+    {"name": "Nhà hát Lớn Hà Nội", "address": "Nhà hát Lớn Hà Nội, 1 Tràng Tiền, Hoàn Kiếm, Hà Nội",
+     "lat": 21.02425, "lng": 105.85757,
+     "aliases": ["nha hat lon ha noi", "nha hat lon", "opera house ha noi"]},
+    {"name": "Sân bay Nội Bài", "address": "Sân bay Quốc tế Nội Bài, Phú Minh, Sóc Sơn, Hà Nội",
+     "lat": 21.22183, "lng": 105.80714,
+     "aliases": ["noi bai", "san bay noi bai", "san bay ha noi", "noi bai airport"]},
 ]
 
 # Token "loại địa điểm" chung chung — KHÔNG đủ để xác định 1 nơi cụ thể. Một khớp
@@ -118,11 +139,13 @@ _GENERIC = {
     "benh", "vien", "cho", "san", "truong", "dai", "hoc", "cong", "duong", "pho",
     "quan", "chua", "nha", "tho", "toa", "thap", "ga", "khu", "du", "lich",
     "trung", "tam", "ben", "vuon", "cua", "hang", "sieu", "thi", "cau", "mall", "plaza",
+    "lang", "bao", "quang",
 }
 
 # Cụm từ dẫn thường bám quanh điểm đến khi người dùng nói (matcher sẽ bỏ đi).
 _FILLER = [
     "thanh pho ho chi minh", "tp ho chi minh", "tphcm", "tp hcm", "ho chi minh", "sai gon", "viet nam",
+    "thanh pho ha noi", "tp ha noi", "ha noi",
     "cho toi den", "cho minh den", "toi muon den", "minh muon den", "toi muon di", "minh muon di",
     "dua toi den", "dua toi", "di den", "den", "toi", "minh", "muon di", "muon den", "di toi",
     "dia chi", "o tai", "tai", "khu vuc", "gan",

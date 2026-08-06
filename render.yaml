@@ -49,7 +49,5 @@ services:
         value: whisper-large-v3 # bản full nhận tiếng Việt tốt hơn turbo
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
-      - key: GOOGLE_MAPS_API_KEY   # Places API (New) + Routes API; để trống -> fallback OSM/OSRM
-        sync: false
-      - key: MAPBOX_TOKEN          # Mapbox geocoding + directions (free); để trống -> fallback OSM/OSRM
+      - key: MAPBOX_TOKEN          # lưới đỡ cho geocode/directions; để trống -> dùng OSM/OSRM
         sync: false
