@@ -180,6 +180,7 @@ export default function useVoiceApp() {
 
   // ---- Start / stop listening ----
   const startListening = useCallback((stopTts = false) => {
+    console.log('[startListening] trigger attempt. busy=', busyRef.current, 'recording=', recordingRef.current);
     if (busyRef.current || recordingRef.current) return;
     recordingRef.current = true;
     dispatch({ type: 'SET_RECORDING', payload: true });

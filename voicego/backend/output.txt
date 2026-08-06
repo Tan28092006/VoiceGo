@@ -1,0 +1,13 @@
+--- PROMPT ---
+Bộ định vị cho app gọi xe ở Việt Nam. TÌM KIẾM để lấy dữ liệu THẬT. Địa điểm: "đại học khxh và nhân văn" gần 10.8700089,106.8030541.
+query_type="address" nếu có số nhà cụ thể, ngược lại "poi".
+Có nhiều chi nhánh trong vùng thì liệt kê tối đa 4, gần trước.
+name: Trả về tên CHÍNH THỨC và CHUẨN XÁC NHẤT (VD: 'lăng bác' -> 'Lăng Chủ tịch Hồ Chí Minh'). Rất quan trọng để tìm kiếm bản đồ.
+full_address ngắn: số nhà + đường + phường/quận (không quốc gia, không mã bưu chính).
+Toạ độ DMS tới 0.1 giây, đặt pin ĐÚNG địa điểm (vd 10°47'09.1"N, 106°42'09.8"E).
+CHỈ trả JSON, không giải thích:
+{"query_type":"poi|address","locations":[{"name":"","full_address":"","lat_dms":"","lng_dms":""}]}
+--------------
+--- GEMINI RESULT ---
+None
+---------------------

@@ -25,8 +25,17 @@ export default class VoiceRecorder {
         this._autoStopped = false;
         this._t0 = (typeof performance !== "undefined" ? performance.now() : 0);
 
-        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+                echoCancellation: true, 
+                noiseSuppression: true, 
+                autoGainControl: true 
+            } 
+        });
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.audioContext.state === 'suspended') {
+            await this.audioContext.resume();
+        }
         this.source = this.audioContext.createMediaStreamSource(this.stream);
         // ScriptProcessor is deprecated but the simplest cross-browser PCM tap.
         this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
@@ -43,6 +52,10 @@ export default class VoiceRecorder {
                 for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
                 const rms = Math.sqrt(sum / data.length);
                 const now = performance.now();
+                if (!this._lastLog || now - this._lastLog > 1000) {
+                    console.log(`[voiceRecorder] RMS: ${rms.toFixed(5)} | Threshold: ${this.speechThreshold}`);
+                    this._lastLog = now;
+                }
                 if (rms > this.speechThreshold) {
                     if (!this._speechStarted) {
                         this._speechStarted = true;
