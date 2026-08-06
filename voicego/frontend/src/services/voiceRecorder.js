@@ -16,9 +16,10 @@ export default class VoiceRecorder {
      */
     async start(opts = {}) {
         this.onAutoStop = opts.onAutoStop || null;
+        this.onSpeechStart = opts.onSpeechStart || null;
         this.silenceMs = opts.silenceMs || 1300;
         this.noSpeechMs = opts.noSpeechMs || 6000;   // give up if nothing is said
-        this.speechThreshold = opts.speechThreshold || 0.018;
+        this.speechThreshold = opts.speechThreshold || 0.008; // Lowered from 0.018 for better sensitivity
         this._speechStarted = false;
         this._silenceStart = null;
         this._autoStopped = false;
@@ -43,8 +44,15 @@ export default class VoiceRecorder {
                 const rms = Math.sqrt(sum / data.length);
                 const now = performance.now();
                 if (rms > this.speechThreshold) {
-                    this._speechStarted = true;
-                    this._silenceStart = null;
+                    if (!this._speechStarted) {
+                        this._speechStarted = true;
+                        this._silenceStart = null;
+                        if (this.onSpeechStart && !this._autoStopped) {
+                            try { this.onSpeechStart(); } catch (err) {}
+                        }
+                    } else {
+                        this._silenceStart = null;
+                    }
                 } else if (this._speechStarted) {
                     if (this._silenceStart == null) this._silenceStart = now;
                     else if (now - this._silenceStart > this.silenceMs) {

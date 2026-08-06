@@ -152,6 +152,10 @@ export default function useVoiceApp() {
       await recorder.start({
         silenceMs: 950,          // cut off a bit sooner -> lower latency
         noSpeechMs: 7000,
+        onSpeechStart: () => {
+          console.log('[Barge-in] Speech detected! Stopping TTS...');
+          stopSpeech(); // Barge-in: cut off AI immediately when user speaks
+        },
         onAutoStop: async () => {
           const wavBlob = await recorder.stop();
           recordingRef.current = false;
@@ -175,13 +179,13 @@ export default function useVoiceApp() {
   }, [dispatch, _autoListen]);
 
   // ---- Start / stop listening ----
-  const startListening = useCallback(() => {
+  const startListening = useCallback((stopTts = false) => {
     if (busyRef.current || recordingRef.current) return;
     recordingRef.current = true;
     dispatch({ type: 'SET_RECORDING', payload: true });
     dispatch({ type: 'SET_STATUS', payload: { main: '🎙️ Đang nghe…', sub: 'Nói điểm đến của bạn' } });
     dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
-    stopSpeech();
+    if (stopTts === true) stopSpeech();
     // Always use Groq Whisper (record -> backend STT) on every device for
     // consistent, accurate Vietnamese recognition.
     _listenWhisper();
@@ -210,7 +214,7 @@ export default function useVoiceApp() {
     // Manual ON -> resume the SAME conversation (memory intact).
     pausedRef.current = false;
     emptyRef.current = 0;
-    startListening();
+    startListening(true);
   }, [startListening, stopListening, dispatch]);
 
   // ---- Send a turn to the agent (or local fallback) ----
@@ -287,17 +291,20 @@ export default function useVoiceApp() {
         dispatch({ type: 'SET_STATE', payload: 'listening' });
       }
 
-      if (reply && !spoke) { _streamText(reply); await speak(reply); }
+      if (reply && !spoke) { 
+        _streamText(reply); 
+        speak(reply).catch(console.error); 
+      }
     } catch (err) {
       console.error('Agent error -> local fallback:', err);
       dispatch({ type: 'SET_BACKEND_ONLINE', payload: false });
-      _localFallback(text);
+      _localFallback();
     } finally {
       busyRef.current = false;
       dispatch({ type: 'SET_BUSY', payload: false });
       if (keepListening) _autoListen();      // hands-free: keep the conversation going
     }
-  }, [dispatch, _autoListen]);
+  }, [dispatch, _autoListen, _localFallback]);
   sendRef.current = _send;
 
   // ---- Connection fallback ----
@@ -308,8 +315,8 @@ export default function useVoiceApp() {
     const msg = 'Xin lỗi, mình chưa kết nối được máy chủ. Bạn thử nói lại sau giây lát nhé.';
     dispatch({ type: 'SET_STATUS', payload: { main: 'Chưa kết nối được trợ lý', sub: 'Kiểm tra mạng rồi thử lại' } });
     _streamText(msg);
-    speak(msg);
-  }, [dispatch]);
+    speak(msg).catch(console.error);
+  }, [dispatch, _streamText]);
 
   // ---- Booking overlay + realtime handoff ----
   const _showBooked = useCallback(async (booked, reply) => {
@@ -431,10 +438,10 @@ export default function useVoiceApp() {
       const greet = 'Xin chào, tôi là trợ lý đặt xe, bạn muốn đến đâu?';
       dispatch({ type: 'SET_STATUS', payload: { main: 'Xin chào! Bạn muốn đến đâu?', sub: 'Hãy nói điểm đến của bạn' } });
       _streamText(greet);
-      await speak(greet);
+      speak(greet).catch(console.error);
       if (cancelled) return;
       // The login click was the user gesture; start listening right after.
-      startListeningRef.current();
+      startListeningRef.current(false);
     })();
     return () => { cancelled = true; };
   }, [dispatch]);
