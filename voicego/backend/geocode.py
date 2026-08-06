@@ -308,6 +308,7 @@ def _build_prompt(text, user_lat, user_lng, grounded):
         f'Bộ định vị cho app gọi xe ở Việt Nam. {how}. Địa điểm: "{text}"{near}.\n'
         'query_type="address" nếu có số nhà cụ thể, ngược lại "poi".\n'
         "Có nhiều chi nhánh trong vùng thì liệt kê tối đa 4, gần trước.\n"
+        "name: Trả về tên CHÍNH THỨC và CHUẨN XÁC NHẤT (VD: 'lăng bác' -> 'Lăng Chủ tịch Hồ Chí Minh'). Rất quan trọng để tìm kiếm bản đồ.\n"
         "full_address ngắn: số nhà + đường + phường/quận (không quốc gia, không mã bưu chính).\n"
         "Toạ độ DMS tới 0.1 giây, đặt pin ĐÚNG địa điểm (vd 10°47'09.1\"N, 106°42'09.8\"E).\n"
         "CHỈ trả JSON, không giải thích:\n"
@@ -482,12 +483,17 @@ def resolve_locations(text, user_lat=None, user_lng=None):
 
     # 2) Gemini hỏng/không có key -> Nominatim trước (đo được là chính xác hơn
     # hẳn Mapbox ở VN), rồi mới tới kết quả Mapbox đã chạy sẵn song song.
-    coords = _nominatim(text, center_lat, center_lng) or _nominatim(f"{text}, Việt Nam")
+    
+    # Chuẩn hóa tên bằng DeepSeek (llm_json) nếu Gemini grounded hỏng
+    normalized_text = llm_json(f"Trả về tên CHÍNH THỨC và CHUẨN XÁC NHẤT của địa điểm này tại Việt Nam để tìm kiếm trên bản đồ (chỉ trả về chuỗi tên, không giải thích, không dùng ngoặc kép): '{text}'")
+    query_text = (normalized_text or text).strip()
+    
+    coords = _nominatim(query_text, center_lat, center_lng) or _nominatim(f"{query_text}, Việt Nam")
     if coords:
         if not _within_service(coords[0], coords[1], center_lat, center_lng):
             return {"ok": False, "reason": "out_of_area"}
         return {"ok": True, "query_type": "address", "source": "nominatim_raw",
-                "locations": [fin({"name": text, "address": text, "lat": coords[0], "lng": coords[1]})]}
+                "locations": [fin({"name": text, "address": query_text, "lat": coords[0], "lng": coords[1]})]}
     if mb:
         return {"ok": True, "query_type": "address", "source": "mapbox", "locations": [fin(mb)]}
     return {"ok": False, "reason": "not_found"}

@@ -196,6 +196,30 @@ def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes |
     return None
 
 
+async def stream_text_to_speech(text: str, voice: str = "banmai", speed: str = ""):
+    """
+    Hỗ trợ streaming âm thanh trực tiếp (nhanh hơn rất nhiều).
+    Vì FPT không hỗ trợ streaming từng chunk qua HTTP, ta sẽ dùng Edge TTS cho streaming
+    để đạt độ trễ thấp nhất. Nếu có lỗi, fallback sang block download của FPT.
+    """
+    try:
+        import edge_tts
+        s = str(speed).strip()
+        rate = f"{int(s):+d}%" if s.lstrip("+-").isdigit() else "+0%"
+        async for chunk in edge_tts.Communicate(text, EDGE_VOICE, rate=rate).stream():
+            if chunk["type"] == "audio":
+                yield chunk["data"]
+    except Exception:
+        # Fallback về FPT nếu Edge lỗi (chạy trong thread để không block event loop)
+        import asyncio
+        audio = await asyncio.to_thread(_fpt_tts, text, voice, speed)
+        if audio:
+            # Chunking the bytes so it streams properly
+            chunk_size = 8192
+            for i in range(0, len(audio), chunk_size):
+                yield audio[i:i+chunk_size]
+
+
 def stream_agent_narration(booking: dict):
     """
     Generator yielding a short Vietnamese 'AI agent đang đặt xe' narration

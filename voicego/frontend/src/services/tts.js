@@ -1,4 +1,4 @@
-import { textToSpeech } from './api';
+import { BACKEND_URL } from './config';
 
 // ONE reusable audio element. Mobile blocks audio started outside a user gesture;
 // by reusing a single element that got unlocked by the greeting (played right
@@ -27,30 +27,24 @@ export function unlockAudio() {
 export async function speak(text) {
   stop();
   const my = genToken;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const blob = await textToSpeech(text);
-      if (my !== genToken) return;            // a newer speak() superseded this
-      if (blob && blob.size > 0) {
-        const url = URL.createObjectURL(blob);
-        return new Promise((resolve) => {
-          if (my !== genToken) { URL.revokeObjectURL(url); resolve(); return; }
-          const a = audioEl();
-          const done = () => { URL.revokeObjectURL(url); resolve(); };
-          a.onended = done;
-          a.onerror = done;
-          a.muted = false;
-          a.src = url;
-          const pr = a.play();
-          if (pr && pr.catch) pr.catch(() => done());
-        });
-      }
-    } catch (e) {
-      if (my !== genToken) return;
-      console.warn(`TTS attempt ${attempt + 1} failed:`, e);
-    }
-  }
-  if (my === genToken) return browserSpeak(text);
+  if (!text) return;
+  
+  const url = `${BACKEND_URL}/api/voice/tts_stream?text=${encodeURIComponent(text)}`;
+  
+  return new Promise((resolve) => {
+    if (my !== genToken) { resolve(); return; }
+    const a = audioEl();
+    const done = () => { resolve(); };
+    a.onended = done;
+    a.onerror = () => {
+      // If streaming fails, fallback to browser TTS
+      browserSpeak(text).then(resolve);
+    };
+    a.muted = false;
+    a.src = url;
+    const pr = a.play();
+    if (pr && pr.catch) pr.catch(() => done());
+  });
 }
 
 export function browserSpeak(text) {

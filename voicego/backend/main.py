@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
 
-from voice import speech_to_text, text_to_speech, whisper_stt
+from voice import speech_to_text, text_to_speech, stream_text_to_speech, whisper_stt
 from geocode import resolve_destination
 from agent import run_agent
 from db import (
@@ -281,6 +281,16 @@ def voice_tts(req: TtsRequest):
     if audio is None:
         return JSONResponse({"error": "tts_failed"}, status_code=502)
     return Response(content=audio, media_type="audio/mpeg")
+
+
+@app.get("/api/voice/tts_stream")
+async def voice_tts_stream(text: str, voice: str = "banmai", speed: str = ""):
+    """Stream audio chunks directly to browser for <audio> element."""
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        stream_text_to_speech(text, voice, speed),
+        media_type="audio/mpeg"
+    )
 
 
 @app.post("/api/agent/chat")
