@@ -21,6 +21,7 @@ const initialState = {
   status: 'Đang khởi động…',
   substatus: '',
   recording: false,
+  voiceActive: false,  // mic ĐANG nghe thấy giọng (VAD vượt ngưỡng) — hiện đèn cho người dùng thấy
   busy: false,
   agentLog: [],        // array of log lines for agent overlay
   agentResult: '',     // final agent result text
@@ -45,7 +46,8 @@ function appReducer(state, action) {
     case 'ADD_MESSAGE': return { ...state, messages: [...state.messages, action.payload] };
     case 'SET_TRANSCRIPT': return { ...state, transcript: action.payload };
     case 'SET_STATUS': return { ...state, status: action.payload.main, substatus: action.payload.sub || '' };
-    case 'SET_RECORDING': return { ...state, recording: action.payload };
+    case 'SET_RECORDING': return { ...state, recording: action.payload, voiceActive: action.payload ? state.voiceActive : false };
+    case 'SET_VOICE_ACTIVE': return { ...state, voiceActive: action.payload };
     case 'SET_BUSY': return { ...state, busy: action.payload };
     case 'SET_AGENT_LOG': return { ...state, agentLog: action.payload };
     case 'ADD_AGENT_LOG': return { ...state, agentLog: [...state.agentLog, action.payload] };
@@ -69,6 +71,7 @@ function appReducer(state, action) {
       substatus: '',
       busy: false,
       recording: false,
+      voiceActive: false,
     };
     default: return state;
   }

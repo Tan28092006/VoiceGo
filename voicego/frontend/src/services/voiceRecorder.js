@@ -50,6 +50,7 @@ export default class VoiceRecorder {
     async start(opts = {}) {
         this.onAutoStop = opts.onAutoStop || null;
         this.onSpeechStart = opts.onSpeechStart || null;
+        this.onVoice = opts.onVoice || null;   // (active:boolean) -> đèn báo nghe thấy giọng
         this.silenceMs = opts.silenceMs || 1300;
         this.noSpeechMs = opts.noSpeechMs || 6000;   // give up if nothing is said
         this.speechThreshold = opts.speechThreshold || 0.0015;  // sàn tuyệt đối
@@ -60,6 +61,8 @@ export default class VoiceRecorder {
         this._autoStopped = false;
         this._hits = 0;
         this._floor = null;
+        this._voiceOn = false;
+        this._quietSince = null;
         this._t0 = (typeof performance !== "undefined" ? performance.now() : 0);
 
         // MUST be created/resumed BEFORE any async 'await' to satisfy iOS Safari user gesture requirements
@@ -116,6 +119,17 @@ export default class VoiceRecorder {
                             + ` | ${this._speechStarted ? 'SPEAK' : (warming ? 'warm' : 'idle')}`);
                     }
 
+                    // Đèn báo "đang nghe thấy giọng" cho UI. Chỉ gọi khi ĐỔI trạng thái
+                    // (kèm 250ms giữ) -> không làm React render 12 lần/giây.
+                    const loud = rms > threshold && !warming;
+                    if (loud) this._quietSince = null;
+                    else if (this._quietSince == null) this._quietSince = now;
+                    const voiceOn = loud || (this._quietSince != null && now - this._quietSince < 250);
+                    if (voiceOn !== this._voiceOn) {
+                        this._voiceOn = voiceOn;
+                        if (this.onVoice) { try { this.onVoice(voiceOn); } catch (err) {} }
+                    }
+
                     if (rms > threshold && !warming) {
                         this._hits = (this._hits || 0) + 1;
                         this._silenceStart = null;
@@ -161,6 +175,10 @@ export default class VoiceRecorder {
 
     stop() {
         this.recording = false;
+        if (this._voiceOn) {                   // tắt đèn báo khi ngừng thu
+            this._voiceOn = false;
+            if (this.onVoice) { try { this.onVoice(false); } catch (err) {} }
+        }
         const inputRate = this.audioContext ? this.audioContext.sampleRate : 44100;
 
         // Merge captured chunks

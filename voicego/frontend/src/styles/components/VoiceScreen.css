@@ -81,3 +81,29 @@
   70%  { box-shadow: 0 0 0 16px rgba(239, 83, 80, 0); }
   100% { box-shadow: 0 0 0 0 rgba(239, 83, 80, 0); }
 }
+
+/* ĐANG NGHE THẤY GIỌNG: nút chuyển XANH + hiện sóng âm nhảy. Nhìn nút là biết
+   VAD có bắt được tiếng hay không (điện thoại không xem được console). */
+.record-fab.hearing {
+  background: linear-gradient(160deg, var(--color-accent-green, #00b14f), #00893d);
+  animation: fab-hearing .9s ease-out infinite;
+}
+@keyframes fab-hearing {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 177, 79, .55); }
+  70%  { box-shadow: 0 0 0 18px rgba(0, 177, 79, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 177, 79, 0); }
+}
+.mic-wave { display: flex; align-items: flex-end; gap: 3px; height: 30px; }
+.mic-wave i {
+  width: 5px; border-radius: 3px; background: #fff;
+  animation: mic-wave-bar .7s ease-in-out infinite;
+}
+.mic-wave i:nth-child(1) { height: 40%; animation-delay: 0s; }
+.mic-wave i:nth-child(2) { height: 100%; animation-delay: .12s; }
+.mic-wave i:nth-child(3) { height: 65%; animation-delay: .24s; }
+.mic-wave i:nth-child(4) { height: 85%; animation-delay: .36s; }
+@keyframes mic-wave-bar {
+  0%, 100% { transform: scaleY(.45); }
+  50%      { transform: scaleY(1); }
+}
+.voice-controls-hint.hearing { color: var(--color-accent-green, #00b14f); font-weight: 800; }

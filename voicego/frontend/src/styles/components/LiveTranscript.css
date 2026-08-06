@@ -6,3 +6,15 @@
     font-style: italic;
     opacity: 0.95;
 }
+
+/* Đang nghe thấy giọng -> chữ XANH + nhấp nháy nhẹ (dấu hiệu mic đang ăn tiếng) */
+.live-transcript.hearing {
+    color: var(--color-accent-green, #00b14f);
+    font-weight: 700;
+    font-style: normal;
+    animation: lt-hearing 1s ease-in-out infinite;
+}
+@keyframes lt-hearing {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .55; }
+}

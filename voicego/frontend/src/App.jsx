@@ -37,8 +37,12 @@ function AppContent({ onBack }) {
       </div>
       {!riding && (
         <div className="voice-controls">
-          <RecordButton recording={state.recording} onToggle={toggleListening} />
-          <span className="voice-controls-hint">{state.recording ? 'Đang nghe… chạm để dừng' : 'Chạm để nói lại'}</span>
+          <RecordButton recording={state.recording} voiceActive={state.voiceActive} onToggle={toggleListening} />
+          <span className={`voice-controls-hint ${state.voiceActive ? 'hearing' : ''}`}>
+            {state.voiceActive
+              ? '🎧 Nghe thấy giọng bạn…'
+              : (state.recording ? 'Đang nghe… chạm để dừng' : 'Chạm để nói lại')}
+          </span>
         </div>
       )}
       <TripOverlay onDismiss={resetTrip} onRepeatPin={repeatPin} />

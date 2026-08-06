@@ -152,9 +152,15 @@ export default function useVoiceApp() {
       await recorder.start({
         silenceMs: 950,          // cut off a bit sooner -> lower latency
         noSpeechMs: 20000,       // give plenty of time (20s) so it doesn't timeout while long TTS is playing
+        // Đèn báo mic đang nghe thấy giọng -> nút mic đổi trạng thái + hiện chữ
+        // "Đang nghe bạn nói…". Nhìn thấy được nên biết ngay VAD có ăn hay không.
+        onVoice: (active) => {
+          dispatch({ type: 'SET_VOICE_ACTIVE', payload: active });
+        },
         onSpeechStart: () => {
           console.log('[Barge-in] Speech detected! Stopping TTS...');
           stopSpeech(); // Barge-in: cut off AI immediately when user speaks
+          dispatch({ type: 'SET_STATUS', payload: { main: '🎧 Nghe thấy bạn nói…', sub: '' } });
         },
         onAutoStop: async () => {
           const wavBlob = await recorder.stop();
