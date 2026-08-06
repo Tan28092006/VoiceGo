@@ -435,11 +435,16 @@ def resolve_locations(text, user_lat=None, user_lng=None):
     center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
 
     def fin(loc, verified=True):
-        d = round(_haversine_km(user_lat, user_lng, loc["lat"], loc["lng"]), 1) if user_lat is not None else None
+        if user_lat is not None and loc.get("lat") is not None and loc.get("lng") is not None:
+            d = round(_haversine_km(user_lat, user_lng, loc["lat"], loc["lng"]), 1)
+        else:
+            d = None
         return {"name": loc["name"], "address": _short_address(loc.get("address"), loc["name"]),
-                "lat": loc["lat"], "lng": loc["lng"], "distanceKm": d, "verified": verified}
+                "lat": loc.get("lat"), "lng": loc.get("lng"), "distanceKm": d, "verified": verified}
 
     def within(loc):
+        if loc.get("lat") is None or loc.get("lng") is None:
+            return True
         return _within_service(loc["lat"], loc["lng"], center_lat, center_lng)
 
     # 0) Gazetteer đã kiểm chứng (tức thì, chính xác; có thể sẵn nhiều chi nhánh).
@@ -481,19 +486,51 @@ def resolve_locations(text, user_lat=None, user_lng=None):
                 "source": "grounded" if ok0 else "grounded_unverified",
                 "locations": [fin(loc0, ok0)]}
 
-    # 2) Gemini hỏng/không có key -> Nominatim trước (đo được là chính xác hơn
-    # hẳn Mapbox ở VN), rồi mới tới kết quả Mapbox đã chạy sẵn song song.
+    # 2) Gemini hỏng/không có key -> Dùng DeepSeek (llm_json) làm đầu não để phân tích chi nhánh/địa chỉ
+    prompt = (
+        f'Người dùng tìm địa điểm: "{text}".\n'
+        'Nhiệm vụ: Xác định tên chuẩn xác. Nếu đây là địa điểm có nhiều chi nhánh (ví dụ: đại học khxh&nv, lotteria, starbucks...), liệt kê tối đa 4 chi nhánh nổi bật nhất ở VN.\n'
+        'Nếu là địa chỉ cụ thể, trả về 1 kết quả.\n'
+        'CHỈ trả về JSON định dạng sau (không giải thích):\n'
+        '{"query_type": "poi|address", "locations": [{"name": "Tên chi nhánh (rất chuẩn xác)", "address": "Địa chỉ ngắn gọn (số, đường, phường, quận, tỉnh)"}]}'
+    )
+    raw = llm_json(prompt)
+    ds_data = _parse_json(raw) if raw else None
     
-    # Chuẩn hóa tên bằng DeepSeek (llm_json) nếu Gemini grounded hỏng
-    normalized_text = llm_json(f"Trả về tên CHÍNH THỨC và CHUẨN XÁC NHẤT của địa điểm này tại Việt Nam để tìm kiếm trên bản đồ (chỉ trả về chuỗi tên, không giải thích, không dùng ngoặc kép): '{text}'")
-    query_text = (normalized_text or text).strip()
-    
-    coords = _nominatim(query_text, center_lat, center_lng) or _nominatim(f"{query_text}, Việt Nam")
-    if coords:
-        if not _within_service(coords[0], coords[1], center_lat, center_lng):
-            return {"ok": False, "reason": "out_of_area"}
+    if ds_data and ds_data.get("locations"):
+        locs = []
+        is_addr = ds_data.get("query_type") == "address"
+        pickup = (user_lat, user_lng) if user_lat is not None else None
+        
+        for loc in ds_data["locations"]:
+            name = loc.get("name") or text
+            addr = loc.get("address") or ""
+            locs.append({
+                "name": name,
+                "address": addr,
+                "lat": None,
+                "lng": None
+            })
+                
+        if locs:
+            locs = locs[:4]
+            
+            # Trả về ngay để người dùng chọn (khoan verify chặt, lat/lng = None)
+            if len(locs) >= 2:
+                return {"ok": True, "query_type": ds_data.get("query_type", "poi"),
+                        "source": "deepseek_only", "locations": [fin(l, False) for l in locs]}
+            
+            # Có đúng 1 kết quả -> verify chặt chẽ qua _pin (Resolve 2)
+            loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)
+            return {"ok": True, "query_type": ds_data.get("query_type", "poi"),
+                    "source": "deepseek_pinned" if ok0 else "deepseek_unverified", 
+                    "locations": [fin(loc0, ok0)]}
+
+    # 3) Fallback cuối cùng nếu cả Gemini và DeepSeek hỏng
+    coords = _nominatim(text, center_lat, center_lng) or _nominatim(f"{text}, Việt Nam")
+    if coords and within({"lat": coords[0], "lng": coords[1]}):
         return {"ok": True, "query_type": "address", "source": "nominatim_raw",
-                "locations": [fin({"name": text, "address": query_text, "lat": coords[0], "lng": coords[1]})]}
+                "locations": [fin({"name": text, "address": text, "lat": coords[0], "lng": coords[1]})]}
     if mb:
         return {"ok": True, "query_type": "address", "source": "mapbox", "locations": [fin(mb)]}
     return {"ok": False, "reason": "not_found"}

@@ -88,7 +88,7 @@ SYSTEM_PROMPT = (
     "('đoán đi', 'sao cũng được', 'tùy', 'gì cũng được', 'không biết', 'không rõ', 'gì cũng đặng') HOẶC bạn nghe không rõ "
     "→ phải HỎI LẠI ĐÚNG câu đang thiếu: 'Bạn muốn đi xe máy hay ô tô?'; TUYỆT ĐỐI không tự chọn thay người dùng, "
     "KHÔNG gọi get_quote khi chưa rõ loại xe, và KHÔNG bịa/đoán điểm đến từ câu mơ hồ. "
-    "Nếu KHÔNG CHẮC về điểm đến hoặc nghe không rõ điểm đến → hỏi lại cho rõ, đừng đoán. "
+    "Nếu KHÔNG CHẮC về điểm đến hoặc nghe không rõ điểm đến → hỏi lại cho rõ, đừng đoán. Bổ sung thêm thông tin người dùng thêm vào nếu có như Quận, thành phố, cơ sở... vào khi gọi GỌI resolve_destination(query) lại để có được điểm đến chính xác hơn"
     "Khi cần dùng tool, hãy gọi qua cơ chế tool-calling; TUYỆT ĐỐI không viết tên hàm hay JSON vào câu trả lời."
 )
 
