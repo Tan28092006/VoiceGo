@@ -1,3 +1,5 @@
+let sharedAudioContext = null;
+
 export default class VoiceRecorder {
     constructor(targetRate = 16000) {
         this.targetRate = targetRate;
@@ -32,10 +34,15 @@ export default class VoiceRecorder {
                 autoGainControl: true 
             } 
         });
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if (this.audioContext.state === 'suspended') {
-            await this.audioContext.resume();
+        
+        if (!sharedAudioContext) {
+            sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
+        if (sharedAudioContext.state === 'suspended') {
+            try { await sharedAudioContext.resume(); } catch (e) {}
+        }
+        this.audioContext = sharedAudioContext;
+        
         this.source = this.audioContext.createMediaStreamSource(this.stream);
         // ScriptProcessor is deprecated but the simplest cross-browser PCM tap.
         this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
@@ -104,7 +111,8 @@ export default class VoiceRecorder {
         try { this.processor.disconnect(); } catch (e) {}
         try { this.source.disconnect(); } catch (e) {}
         if (this.stream) this.stream.getTracks().forEach(t => t.stop());
-        if (this.audioContext) this.audioContext.close();
+        // Do not close the shared AudioContext so it can be reused later without user gesture
+        // if (this.audioContext) this.audioContext.close();
 
         const downsampled = this._downsample(merged, inputRate, this.targetRate);
         return this._encodeWav(downsampled, this.targetRate);
