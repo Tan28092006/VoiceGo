@@ -102,15 +102,22 @@ export default class VoiceRecorder {
                     const rms = Math.sqrt(sum / data.length);
                     const now = performance.now();
 
-                    // Ngưỡng THÍCH NGHI thay cho ngưỡng cố định: bám theo mức "nền" hiện
-                    // tại và đòi khung âm phải vượt hẳn lên. Một con số cố định không thể
-                    // vừa phục vụ mic bị AEC gate (nền ~0.0005) vừa phục vụ mic rò tiếng
-                    // TTS từ loa (nền ~0.01 -> sẽ tự cắt lời chính nó).
-                    if (!this._speechStarted) {
-                        this._floor = this._floor == null ? rms : this._floor * 0.85 + rms * 0.15;
-                    }
-                    const threshold = Math.max(this.speechThreshold, (this._floor || 0) * this.floorMult);
+                    // Ngưỡng THÍCH NGHI: bám mức "nền" rồi đòi khung âm vượt hẳn lên. Một
+                    // con số cố định không thể vừa phục vụ mic bị AEC gate (nền ~0.0005)
+                    // vừa phục vụ mic rò tiếng TTS từ loa (nền ~0.01 -> tự cắt lời mình).
+                    // Ngưỡng phải tính TỪ nền CŨ, trước khi cập nhật nền (xem dưới).
+                    const threshold = Math.max(this.speechThreshold,
+                        this._floor == null ? 0 : this._floor * this.floorMult);
                     const warming = now - this._t0 < this.warmupMs;   // chờ nền ổn định
+                    const aboveFloor = rms > threshold;
+
+                    // Nền chỉ học từ khung IM LẶNG, theo kiểu min-tracking: tụt xuống ngay
+                    // khi yên hơn, bò lên rất chậm. Bản trước học cả khung đang nói nên nền
+                    // chạy theo giọng -> ngưỡng luôn cao hơn rms -> KHÔNG BAO GIỜ trigger.
+                    if (!aboveFloor || warming) {
+                        if (this._floor == null || rms < this._floor) this._floor = rms;
+                        else this._floor = this._floor * 0.97 + rms * 0.03;
+                    }
 
                     if (!this._dbgAt || now - this._dbgAt > 200) {
                         this._dbgAt = now;
@@ -121,7 +128,7 @@ export default class VoiceRecorder {
 
                     // Đèn báo "đang nghe thấy giọng" cho UI. Chỉ gọi khi ĐỔI trạng thái
                     // (kèm 250ms giữ) -> không làm React render 12 lần/giây.
-                    const loud = rms > threshold && !warming;
+                    const loud = aboveFloor && !warming;
                     if (loud) this._quietSince = null;
                     else if (this._quietSince == null) this._quietSince = now;
                     const voiceOn = loud || (this._quietSince != null && now - this._quietSince < 250);
@@ -130,7 +137,7 @@ export default class VoiceRecorder {
                         if (this.onVoice) { try { this.onVoice(voiceOn); } catch (err) {} }
                     }
 
-                    if (rms > threshold && !warming) {
+                    if (loud) {
                         this._hits = (this._hits || 0) + 1;
                         this._silenceStart = null;
                         // Cần 2 khung liên tiếp (~170ms) mới coi là nói, để một tiếng cộp
