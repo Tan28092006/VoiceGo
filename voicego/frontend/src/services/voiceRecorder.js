@@ -58,11 +58,11 @@ export default class VoiceRecorder {
         const q = new URLSearchParams(window.location.search);
         const num = (k, d) => (Number(q.get(k)) > 0 ? Number(q.get(k)) : d);
         this.speechThreshold = opts.speechThreshold || 0.0015;  // sàn tuyệt đối
-        this.floorMult = opts.floorMult || num('vadmult', 4.5);   // vượt nền mấy lần mới tính
+        this.floorMult = opts.floorMult || num('vadmult', 5);   // vượt nền mấy lần mới tính
         // Số khung LIÊN TIẾP phải đủ to mới coi là đang nói (~85ms/khung). Đây là
-        // nút chống-ho quan trọng nhất: tiếng ho/cộp chỉ kéo dài 150-250ms nên
-        // không đạt 4 khung, còn giọng nói thì vượt dễ dàng.
-        this.speechFrames = opts.speechFrames || num('vadframes', 4);
+        // nút chống-nhiễu quan trọng nhất: ho/cộp/va chạm chỉ kéo 150-250ms nên
+        // không thể đạt 7 khung (~600ms), còn một câu nói thì vượt thừa.
+        this.speechFrames = opts.speechFrames || num('vadframes', 7);
         this.warmupMs = opts.warmupMs || 400;     // để nền kịp học mức echo của TTS
         this._speechStarted = false;
         this._silenceStart = null;
@@ -157,7 +157,10 @@ export default class VoiceRecorder {
                             }
                         }
                     } else {
-                        this._hits = 0;
+                        // Trừ dần thay vì xoá sạch: người nói vẫn có nhịp ngắt hơi giữa
+                        // các từ, xoá sạch thì không bao giờ gom đủ số khung. Tiếng ho
+                        // đơn lẻ thì vẫn tiêu vì sau đó toàn khung im, trừ về 0.
+                        this._hits = Math.max(0, (this._hits || 0) - 1);
                         if (this._speechStarted) {
                             if (this._silenceStart == null) this._silenceStart = now;
                             else if (now - this._silenceStart > this.silenceMs) {
