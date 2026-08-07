@@ -127,6 +127,14 @@ _gemini_rr = 0           # con trỏ xoay vòng để tải rải đều các ke
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
 _GEMINI_MODEL_FOR = {}   # key -> model thực sự dùng được với key đó
 
+# Ghim sẵn model cho từng key để khỏi tốn một lần 404 mới học được: đặt
+# GEMINI_MODELS="gemini-2.5-flash,,gemini-3.1-flash-lite" — theo ĐÚNG thứ tự key
+# trong pool, ô để trống nghĩa là key đó dùng GEMINI_MODEL mặc định.
+for _i, _m in enumerate((os.getenv("GEMINI_MODELS", "") or "").split(",")):
+    _m = _m.strip()
+    if _m and _i < len(GEMINI_API_KEYS):
+        _GEMINI_MODEL_FOR[GEMINI_API_KEYS[_i]] = _m
+
 
 def _gemini_call(prompt, grounded, retries=2):
     """One Gemini call (optionally with Google Search grounding), rotating over the
@@ -424,16 +432,21 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None):
     primary = addr if is_address else name
     fallback = name if is_address else addr
 
+    # Nominatim trước (đo trên 8 địa điểm VN: thắng Mapbox 7-1 và không bao giờ
+    # trả rỗng), nhưng thỉnh thoảng lệch THẢM HOẠ — "THPT Lê Hồng Phong" ra tận
+    # 1120 km. Nên mọi kết quả đều phải nằm trong bán kính phục vụ, sai thì rơi
+    # xuống Mapbox chứ không ghim bừa.
     ref = None
     nm = _nominatim_full(primary, center_lat, center_lng) if primary.strip() else None
     if not nm and fallback.strip() and fallback != primary:
         nm = _nominatim_full(fallback, center_lat, center_lng)
-    if nm:
+    if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
         ref = {"name": loc["name"], "address": addr or nm[2],
                "lat": nm[0], "lng": nm[1]}
-    else:
-        query = addr or name
-        ref = _mapbox_first(query, center_lat, center_lng)
+    if not ref:
+        mb = _mapbox_first(addr or name, center_lat, center_lng)
+        if mb and _within_service(mb["lat"], mb["lng"], center_lat, center_lng):
+            ref = mb
 
     if not ref:
         return loc, False                          # không có gì để đối chiếu
