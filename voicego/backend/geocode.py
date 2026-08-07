@@ -374,7 +374,9 @@ def _build_prompt(text, user_lat, user_lng, grounded):
     return (
         f'Bộ định vị cho app gọi xe ở Việt Nam. {how}. Địa điểm: "{text}"{near}.\n'
         'query_type="address" nếu có số nhà cụ thể, ngược lại "poi".\n'
-        "Có nhiều chi nhánh trong vùng thì liệt kê tối đa 4, gần trước.\n"
+        "Nơi có NHIỀU cơ sở/chi nhánh (trường, bệnh viện, chuỗi cửa hàng): BẮT BUỘC "
+        "liệt kê MỌI cơ sở trong vùng, tối đa 4, gần trước. TUYỆT ĐỐI KHÔNG tự chọn "
+        "giúp một cơ sở rồi bỏ các cơ sở còn lại — người dùng phải được tự chọn.\n"
         "name: Trả về tên CHÍNH THỨC và CHUẨN XÁC NHẤT (VD: 'lăng bác' -> 'Lăng Chủ tịch Hồ Chí Minh'). Rất quan trọng để tìm kiếm bản đồ.\n"
         "full_address ngắn: số nhà + đường + phường/quận (không quốc gia, không mã bưu chính).\n"
         "Toạ độ DMS tới 0.1 giây, đặt pin ĐÚNG địa điểm (vd 10°47'09.1\"N, 106°42'09.8\"E).\n"
