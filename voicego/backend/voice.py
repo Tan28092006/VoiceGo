@@ -120,8 +120,18 @@ def warmup():
         from google import genai  # noqa: F401
     except Exception:  # noqa: BLE001
         pass
+    # Edge TTS: import thôi CHƯA đủ. Lần tổng hợp đầu tiên tốn 2762ms vì phải lấy
+    # token rồi mới phát; các lần sau chỉ 370-500ms. Đọc thử một tiếng ở đây để
+    # trả cái giá đó lúc khởi động, thay vì bắt câu trả lời đầu tiên gánh.
     try:
-        import edge_tts  # noqa: F401
+        import asyncio
+        import edge_tts
+
+        async def _prime():
+            async for chunk in edge_tts.Communicate("xin chào", EDGE_VOICE).stream():
+                if chunk["type"] == "audio":
+                    break          # có chunk đầu là đủ, token đã nằm trong cache
+        asyncio.run(_prime())
     except Exception:  # noqa: BLE001
         pass
 
