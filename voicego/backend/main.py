@@ -10,6 +10,7 @@ from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
+import time
 
 from voice import speech_to_text, text_to_speech, stream_text_to_speech, whisper_stt
 from geocode import resolve_destination
@@ -34,6 +35,19 @@ from db import (
 )
 
 app = FastAPI(title="VoiceGo API", version="2.0.0")
+
+
+@app.on_event("startup")
+def _warmup():
+    """Nạp SDK + dựng client ngay khi server lên, trong luồng nền.
+
+    Trước đây openai/google-genai được import LẦN ĐẦU ngay giữa lượt nói đầu tiên
+    của người dùng, nên câu đầu luôn chậm hơn hẳn các câu sau. Làm trước ở đây thì
+    lượt đầu nhanh ngang lượt sau.
+    """
+    import threading
+    from voice import warmup
+    threading.Thread(target=warmup, daemon=True).start()
 
 app.add_middleware(
     CORSMiddleware,
@@ -255,6 +269,7 @@ async def voice_stt(file: UploadFile = File(...), engine: str = "whisper"):
     """Transcribe Vietnamese audio. Default: Groq Whisper (primary) + FPT fallback.
     Pass ?engine=fpt to try FPT.AI ASR first (Groq fallback).
     `engine_used` says which engine ACTUALLY produced the text (no silent fallback)."""
+    _t0 = time.perf_counter()
     audio = await file.read()
     fname = file.filename or "speech.wav"
     if engine == "fpt":
@@ -271,6 +286,8 @@ async def voice_stt(file: UploadFile = File(...), engine: str = "whisper"):
             engine_used = "fpt" if result.get("text") else "none"
     result["engine"] = engine            # engine requested
     result["engine_used"] = engine_used  # engine that actually produced the text
+    result["ms"] = int((time.perf_counter() - _t0) * 1000)
+    print(f"[timing] STT {result['ms']}ms | engine={engine_used} | {len(audio)}B")
     return result
 
 
@@ -296,7 +313,11 @@ async def voice_tts_stream(text: str, voice: str = "banmai", speed: str = ""):
 @app.post("/api/agent/chat")
 def agent_chat(req: ChatRequest):
     """One turn of the conversational booking agent (Groq + tools)."""
-    return run_agent(req.messages, req.pickup)
+    _t0 = time.perf_counter()
+    out = run_agent(req.messages, req.pickup)
+    print(f"[timing] agent {int((time.perf_counter() - _t0) * 1000)}ms "
+          f"| ui={list((out or {}).get('ui', {}).keys())}")
+    return out
 
 
 @app.post("/api/voice/geocode")

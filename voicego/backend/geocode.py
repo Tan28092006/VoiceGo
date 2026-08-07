@@ -119,7 +119,21 @@ def _mapbox_first(text, center_lat, center_lng):
 
 _GEMINI_PARKED = {}      # key -> thời điểm hết "treo" sau khi dính 429
 _GEMINI_PARK_SEC = 60
+_GEMINI_STRIKES = {}     # key -> số lần 429 liên tiếp (để treo lâu dần)
+_GEMINI_CLIENTS = {}     # key -> genai.Client dùng lại (khỏi bắt tay TLS mỗi lượt)
 _gemini_rr = 0           # con trỏ xoay vòng để tải rải đều các key
+
+
+def _park_429(key):
+    """Treo key vừa dính 429, lần sau lâu hơn lần trước: 1' → 4' → 16' → tối đa 1h.
+
+    Hạn mức NGÀY chỉ có 20 lượt, nên một key đã cạn sẽ 429 lại ngay sau khi hết
+    treo 60s — mỗi lượt nói lại phải trả thêm một vòng gọi hỏng. Treo lâu dần giúp
+    key cạn tự lùi xuống cuối, khỏi phải vào Render đổi thứ tự key bằng tay.
+    """
+    n = _GEMINI_STRIKES.get(key, 0) + 1
+    _GEMINI_STRIKES[key] = n
+    _GEMINI_PARKED[key] = time.time() + min(_GEMINI_PARK_SEC * (4 ** (n - 1)), 3600)
 
 # gemini-2.5-flash "no longer available to new users": key từ tài khoản mới gọi nó
 # là 404. Mỗi key vì thế có thể phải dùng model khác nhau — nhớ lại để lần sau khỏi
@@ -170,11 +184,14 @@ def _gemini_call(prompt, grounded, retries=2):
 
     for n in range(len(pool)):
         key = pool[(start + n) % len(pool)]
-        client = genai.Client(api_key=key)
+        client = _GEMINI_CLIENTS.get(key)
+        if client is None:
+            client = _GEMINI_CLIENTS[key] = genai.Client(api_key=key)
         for i in range(retries + 1):
             model = _GEMINI_MODEL_FOR.get(key, GEMINI_MODEL)
             try:
                 r = client.models.generate_content(model=model, contents=prompt, config=cfg)
+                _GEMINI_STRIKES.pop(key, None)      # key lại chạy được -> xoá lịch sử phạt
                 return (r.text or "").strip()
             except Exception as e:  # noqa: BLE001
                 msg = str(e)
@@ -185,7 +202,7 @@ def _gemini_call(prompt, grounded, retries=2):
                     _GEMINI_MODEL_FOR[key] = GEMINI_FALLBACK_MODEL
                     continue
                 if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-                    _GEMINI_PARKED[key] = time.time() + _GEMINI_PARK_SEC   # hết quota -> đổi key
+                    _park_429(key)          # hết quota -> treo (lâu dần) rồi đổi key
                     break
                 # Key hỏng/bị đình chỉ, hoặc hết model để thử -> treo lâu, đổi key.
                 if any(s in msg for s in ("API_KEY_INVALID", "PERMISSION_DENIED",

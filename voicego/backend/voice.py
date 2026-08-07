@@ -67,15 +67,63 @@ ASR_URL = "https://api.fpt.ai/hmi/asr/general"
 TTS_URL = "https://api.fpt.ai/hmi/tts/v5"
 
 
+# Client được TÁI SỬ DỤNG, không tạo mới mỗi lượt: mỗi lần new OpenAI() là một
+# connection pool mới -> bắt tay TLS lại từ đầu với DeepSeek/Groq, tốn vài trăm ms
+# cho MỌI lượt nói, không riêng lượt đầu.
+_LLM_CLIENT = None
+_WHISPER_CLIENT = None
+
+
 def llm_client():
     """OpenAI-compatible client cho LLM hội thoại (DeepSeek mặc định), None nếu thiếu key/SDK."""
+    global _LLM_CLIENT
+    if _LLM_CLIENT is not None:
+        return _LLM_CLIENT
     if not LLM_API_KEY:
         return None
     try:
         from openai import OpenAI
     except ImportError:
         return None
-    return OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+    _LLM_CLIENT = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+    return _LLM_CLIENT
+
+
+def whisper_client():
+    """Client Groq riêng cho Whisper, cũng dùng lại để giữ kết nối."""
+    global _WHISPER_CLIENT
+    if _WHISPER_CLIENT is not None:
+        return _WHISPER_CLIENT
+    if not GROQ_WHISPER_KEY:
+        return None
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None
+    _WHISPER_CLIENT = OpenAI(base_url=GROQ_BASE_URL, api_key=GROQ_WHISPER_KEY)
+    return _WHISPER_CLIENT
+
+
+def warmup():
+    """Nạp sẵn SDK + dựng sẵn client ngay lúc server khởi động.
+
+    Các import này (openai, google-genai) nặng cả giây và trước đây nằm trong hàm,
+    nên NGƯỜI DÙNG ĐẦU TIÊN phải trả toàn bộ chi phí đó — đúng hiện tượng câu đầu
+    lâu hơn hẳn mấy câu sau. Chạy trước thì lượt đầu nhanh ngang lượt sau.
+    """
+    try:
+        llm_client()
+        whisper_client()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from google import genai  # noqa: F401
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import edge_tts  # noqa: F401
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def llm_json(prompt: str) -> str | None:
@@ -99,9 +147,10 @@ def whisper_stt(audio_bytes: bytes, filename: str = "speech.wav") -> dict:
     if not GROQ_WHISPER_KEY:
         return {"text": "", "error": "no_whisper_key"}
     try:
-        from openai import OpenAI
         import io
-        client = OpenAI(base_url=GROQ_BASE_URL, api_key=GROQ_WHISPER_KEY)
+        client = whisper_client()
+        if not client:
+            return {"text": "", "error": "no_whisper_client"}
         buf = io.BytesIO(audio_bytes)
         buf.name = filename
         r = client.audio.transcriptions.create(
