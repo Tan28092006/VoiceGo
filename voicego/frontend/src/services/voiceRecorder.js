@@ -53,8 +53,16 @@ export default class VoiceRecorder {
         this.onVoice = opts.onVoice || null;   // (active:boolean) -> đèn báo nghe thấy giọng
         this.silenceMs = opts.silenceMs || 1300;
         this.noSpeechMs = opts.noSpeechMs || 6000;   // give up if nothing is said
+        // Ba nút vặn của VAD. Chỉnh nhanh ngay trên điện thoại bằng query string
+        // (?vadmult=6&vadframes=5) để khỏi phải build lại mỗi lần thử.
+        const q = new URLSearchParams(window.location.search);
+        const num = (k, d) => (Number(q.get(k)) > 0 ? Number(q.get(k)) : d);
         this.speechThreshold = opts.speechThreshold || 0.0015;  // sàn tuyệt đối
-        this.floorMult = opts.floorMult || 3.5;   // phải vượt nền bao nhiêu lần mới là nói
+        this.floorMult = opts.floorMult || num('vadmult', 4.5);   // vượt nền mấy lần mới tính
+        // Số khung LIÊN TIẾP phải đủ to mới coi là đang nói (~85ms/khung). Đây là
+        // nút chống-ho quan trọng nhất: tiếng ho/cộp chỉ kéo dài 150-250ms nên
+        // không đạt 4 khung, còn giọng nói thì vượt dễ dàng.
+        this.speechFrames = opts.speechFrames || num('vadframes', 4);
         this.warmupMs = opts.warmupMs || 400;     // để nền kịp học mức echo của TTS
         this._speechStarted = false;
         this._silenceStart = null;
@@ -122,7 +130,7 @@ export default class VoiceRecorder {
                     if (!this._dbgAt || now - this._dbgAt > 200) {
                         this._dbgAt = now;
                         debugBadge(`rms ${rms.toFixed(4)} | th ${threshold.toFixed(4)}`
-                            + ` | floor ${(this._floor || 0).toFixed(4)}`
+                            + ` | x${this.floorMult} | ${this._hits || 0}/${this.speechFrames} khung`
                             + ` | ${this._speechStarted ? 'SPEAK' : (warming ? 'warm' : 'idle')}`);
                     }
 
@@ -140,9 +148,9 @@ export default class VoiceRecorder {
                     if (loud) {
                         this._hits = (this._hits || 0) + 1;
                         this._silenceStart = null;
-                        // Cần 2 khung liên tiếp (~170ms) mới coi là nói, để một tiếng cộp
-                        // hay va chạm không cắt mất lời AI đang đọc.
-                        if (!this._speechStarted && this._hits >= 2) {
+                        // Cần đủ số khung LIÊN TIẾP mới coi là nói, để tiếng ho/cộp/va
+                        // chạm không cắt mất lời AI đang đọc.
+                        if (!this._speechStarted && this._hits >= this.speechFrames) {
                             this._speechStarted = true;
                             if (this.onSpeechStart) {
                                 try { this.onSpeechStart(); } catch (err) {}
