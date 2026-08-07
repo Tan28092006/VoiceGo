@@ -166,8 +166,13 @@ def _gemini_call(prompt, grounded, retries=2):
                 if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
                     _GEMINI_PARKED[key] = time.time() + _GEMINI_PARK_SEC   # hết quota -> đổi key
                     break
-                if "API_KEY_INVALID" in msg or "PERMISSION_DENIED" in msg or "API key not valid" in msg:
-                    _GEMINI_PARKED[key] = time.time() + 3600               # key hỏng -> bỏ qua lâu
+                # Key hỏng, hoặc project của key đó không phục vụ model này (404 —
+                # danh mục model KHÁC NHAU giữa các project, đã gặp thật khi trộn key
+                # từ nhiều tài khoản AI Studio). Cả hai đều là lỗi "riêng của key
+                # này" -> treo lâu rồi ĐỔI KEY, đừng huỷ cả request.
+                if any(s in msg for s in ("API_KEY_INVALID", "PERMISSION_DENIED",
+                                          "API key not valid", "404", "NOT_FOUND")):
+                    _GEMINI_PARKED[key] = time.time() + 3600
                     break
                 if any(k in msg for k in ("503", "UNAVAILABLE", "overload")):
                     time.sleep(0.5 * (i + 1))
