@@ -105,6 +105,19 @@ export default class VoiceRecorder {
                 const data = e.inputBuffer.getChannelData(0);
                 this.chunks.push(new Float32Array(data));
 
+                // Khi CHƯA xác nhận là tiếng nói, chỉ giữ lại một đoạn "tiền ghi" ngắn
+                // rồi vứt phần cũ hơn. Trước đây giữ tất từ lúc mic mở, nên file gửi
+                // lên Whisper còn dính cả tiếng TTS đang phát (mic mở khi AI chưa đọc
+                // xong) -> Whisper chép lại chính giọng AI và đưa ngược vào agent.
+                // Đoạn giữ lại phải DÀI HƠN cửa sổ xác nhận (speechFrames), nếu không
+                // sẽ cắt mất mấy từ đầu — chính là mấy từ đã kích hoạt nhận diện.
+                if (!this._speechStarted) {
+                    const keep = this.speechFrames + 4;      // ~950ms tiền ghi
+                    if (this.chunks.length > keep) {
+                        this.chunks.splice(0, this.chunks.length - keep);
+                    }
+                }
+
                 if (this.onAutoStop && !this._autoStopped) {
                     let sum = 0;
                     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
