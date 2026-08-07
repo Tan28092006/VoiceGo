@@ -121,6 +121,12 @@ _GEMINI_PARKED = {}      # key -> thời điểm hết "treo" sau khi dính 429
 _GEMINI_PARK_SEC = 60
 _gemini_rr = 0           # con trỏ xoay vòng để tải rải đều các key
 
+# gemini-2.5-flash "no longer available to new users": key từ tài khoản mới gọi nó
+# là 404. Mỗi key vì thế có thể phải dùng model khác nhau — nhớ lại để lần sau khỏi
+# tốn thêm một lần 404.
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
+_GEMINI_MODEL_FOR = {}   # key -> model thực sự dùng được với key đó
+
 
 def _gemini_call(prompt, grounded, retries=2):
     """One Gemini call (optionally with Google Search grounding), rotating over the
@@ -157,27 +163,37 @@ def _gemini_call(prompt, grounded, retries=2):
     for n in range(len(pool)):
         key = pool[(start + n) % len(pool)]
         client = genai.Client(api_key=key)
-        for i in range(retries):
+        for i in range(retries + 1):
+            model = _GEMINI_MODEL_FOR.get(key, GEMINI_MODEL)
             try:
-                r = client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=cfg)
+                r = client.models.generate_content(model=model, contents=prompt, config=cfg)
                 return (r.text or "").strip()
             except Exception as e:  # noqa: BLE001
                 msg = str(e)
+                # Project của key này không có model đang cấu hình (2.5-flash bị khoá
+                # với tài khoản mới) -> chuyển key đó sang model thay thế và thử lại
+                # NGAY, thay vì bỏ phí cả một key còn quota.
+                if ("404" in msg or "NOT_FOUND" in msg) and model != GEMINI_FALLBACK_MODEL:
+                    _GEMINI_MODEL_FOR[key] = GEMINI_FALLBACK_MODEL
+                    continue
                 if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
                     _GEMINI_PARKED[key] = time.time() + _GEMINI_PARK_SEC   # hết quota -> đổi key
                     break
-                # Key hỏng, hoặc project của key đó không phục vụ model này (404 —
-                # danh mục model KHÁC NHAU giữa các project, đã gặp thật khi trộn key
-                # từ nhiều tài khoản AI Studio). Cả hai đều là lỗi "riêng của key
-                # này" -> treo lâu rồi ĐỔI KEY, đừng huỷ cả request.
+                # Key hỏng/bị đình chỉ, hoặc hết model để thử -> treo lâu, đổi key.
                 if any(s in msg for s in ("API_KEY_INVALID", "PERMISSION_DENIED",
-                                          "API key not valid", "404", "NOT_FOUND")):
+                                          "API key not valid", "SUSPENDED", "404", "NOT_FOUND")):
                     _GEMINI_PARKED[key] = time.time() + 3600
                     break
                 if any(k in msg for k in ("503", "UNAVAILABLE", "overload")):
                     time.sleep(0.5 * (i + 1))
                     continue
                 return None      # lỗi thật (prompt hỏng...) -> đổi key cũng vô ích
+
+    # Grounding (google_search) có hạn mức RIÊNG và cạn sớm hơn hẳn gọi thường: đo
+    # được lúc gọi thường vẫn OK mà bật grounding là 429. Hết grounding thì vẫn còn
+    # kiến thức sẵn có của model — dùng tiếp còn hơn rơi thẳng xuống Nominatim.
+    if grounded:
+        return _gemini_call(prompt, grounded=False, retries=1)
     return None
 
 
