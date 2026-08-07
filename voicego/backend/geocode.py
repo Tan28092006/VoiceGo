@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
-from voice import GEMINI_API_KEY, GEMINI_MODEL, llm_json
+from voice import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_MODEL, llm_json
 from places_db import lookup as _local_lookup, lookup_all as _lookup_all_pd
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
@@ -117,17 +117,22 @@ def _mapbox_first(text, center_lat, center_lng):
     return None
 
 
+_GEMINI_PARKED = {}      # key -> thời điểm hết "treo" sau khi dính 429
+_GEMINI_PARK_SEC = 60
+_gemini_rr = 0           # con trỏ xoay vòng để tải rải đều các key
+
+
 def _gemini_call(prompt, grounded, retries=2):
-    """One Gemini call (optionally with Google Search grounding); retry on 503/429."""
-    if not GEMINI_API_KEY:
+    """One Gemini call (optionally with Google Search grounding), rotating over the
+    key pool: a 429 parks that key for a minute and moves to the next one, so N free
+    keys ≈ N× the free quota. 503/overload retries the same key."""
+    if not GEMINI_API_KEYS:
         return None
     try:
         from google import genai
         from google.genai import types
     except ImportError:
         return None
-
-    client = genai.Client(api_key=GEMINI_API_KEY)
 
     # thinking_budget=0 -> TẮT "thinking" của Gemini 2.5 Flash (mặc định BẬT).
     # Đo thực tế trên chính prompt này: 16s -> 3.2s, grounding vẫn chạy thật
@@ -142,16 +147,32 @@ def _gemini_call(prompt, grounded, retries=2):
         # SDK cũ chưa có thinking_config -> chạy như trước, chỉ mất phần tăng tốc.
         cfg = (types.GenerateContentConfig(tools=kw["tools"]) if grounded else None)
 
-    for i in range(retries):
-        try:
-            r = client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=cfg)
-            return (r.text or "").strip()
-        except Exception as e:  # noqa: BLE001
-            msg = str(e)
-            if any(k in msg for k in ("503", "UNAVAILABLE", "overload", "429", "RESOURCE_EXHAUSTED")):
-                time.sleep(0.5 * (i + 1))
-                continue
-            return None
+    global _gemini_rr
+    now = time.time()
+    # Ưu tiên key chưa bị treo; nếu treo hết thì cứ thử lại toàn bộ (còn hơn bỏ cuộc).
+    pool = [k for k in GEMINI_API_KEYS if _GEMINI_PARKED.get(k, 0) <= now] or list(GEMINI_API_KEYS)
+    start = _gemini_rr % len(pool)
+    _gemini_rr += 1
+
+    for n in range(len(pool)):
+        key = pool[(start + n) % len(pool)]
+        client = genai.Client(api_key=key)
+        for i in range(retries):
+            try:
+                r = client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=cfg)
+                return (r.text or "").strip()
+            except Exception as e:  # noqa: BLE001
+                msg = str(e)
+                if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                    _GEMINI_PARKED[key] = time.time() + _GEMINI_PARK_SEC   # hết quota -> đổi key
+                    break
+                if "API_KEY_INVALID" in msg or "PERMISSION_DENIED" in msg or "API key not valid" in msg:
+                    _GEMINI_PARKED[key] = time.time() + 3600               # key hỏng -> bỏ qua lâu
+                    break
+                if any(k in msg for k in ("503", "UNAVAILABLE", "overload")):
+                    time.sleep(0.5 * (i + 1))
+                    continue
+                return None      # lỗi thật (prompt hỏng...) -> đổi key cũng vô ích
     return None
 
 
@@ -320,7 +341,7 @@ def _gemini_locations(text, user_lat, user_lng):
     """GROUNDED Gemini -> {query_type, locations:[{name,address,lat,lng}]} with REAL
     coords, or None. Plain (non-grounded) LLM coords are hallucinated, so we only
     trust grounded output; without a key the caller falls back to a real geocoder."""
-    if not GEMINI_API_KEY:
+    if not GEMINI_API_KEYS:
         return None
     data = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, True), grounded=True, retries=1))
     if not data:

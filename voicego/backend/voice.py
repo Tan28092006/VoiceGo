@@ -21,7 +21,26 @@ except ImportError:
 
 # Keys come ONLY from the environment / .env — no secrets hardcoded here.
 FPT_API_KEY = os.getenv("FPT_API_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+def _collect_gemini_keys() -> list[str]:
+    """Gom nhiều key Gemini để CỘNG DỒN hạn mức free — mỗi key thuộc một project
+    riêng nên có hạn mức riêng; N key ≈ N lần quota, đủ cho demo QR nhiều người quét.
+    Nhận cả 3 kiểu khai báo (tiện dán vào Render): GEMINI_API_KEY,
+    GEMINI_API_KEYS="k1,k2,k3", và GEMINI_API_KEY_2 ... GEMINI_API_KEY_9.
+    """
+    raw = [os.getenv("GEMINI_API_KEY", "")]
+    raw += (os.getenv("GEMINI_API_KEYS", "") or "").split(",")
+    raw += [os.getenv(f"GEMINI_API_KEY_{i}", "") for i in range(2, 10)]
+    keys, seen = [], set()
+    for k in raw:
+        k = (k or "").strip()
+        if k and k not in seen:
+            seen.add(k)
+            keys.append(k)
+    return keys
+
+
+GEMINI_API_KEYS = _collect_gemini_keys()
+GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else ""   # tương thích code cũ
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # ── LLM hội thoại + geocode (OpenAI-compatible) ──────────────────────────────

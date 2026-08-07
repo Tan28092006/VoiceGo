@@ -33,6 +33,8 @@ services:
       # ── Tuỳ chọn, để trống cũng chạy ──
       - key: FPT_API_KEY        # TTS tiếng Việt; hết quota vẫn chạy nhờ edge-tts
         sync: false
+      - key: GEMINI_API_KEYS    # thêm key AI Studio khác, cách nhau dấu phẩy -> cộng dồn quota
+        sync: false
       - key: GEMINI_API_KEY     # grounding cho geocode, bỏ trống được
         sync: false
 
