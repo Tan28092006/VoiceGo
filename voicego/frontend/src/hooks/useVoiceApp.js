@@ -25,6 +25,11 @@ export default function useVoiceApp() {
   const pausedRef = useRef(false);      // user manually turned the mic OFF -> stop auto-listen
   const pickupRef = useRef(null);       // rider's live GPS {lat,lng}; null -> backend default
   const distBucketRef = useRef(null);   // last spoken proximity bucket (avoid TTS spam)
+  const processingRef = useRef(false);  // đang STT/gọi agent -> KHÔNG được mở lại mic
+
+  // Sau khi AI bắt đầu đọc, chờ chừng này rồi mới mở mic lại. Mở sớm thì tiếng ồn
+  // trong mấy giây đầu hay cắt ngang ngay câu trả lời vừa mới bắt đầu.
+  const BARGE_IN_ARM_MS = 3000;
 
   // Latest-value refs so the hands-free loop callbacks can call each other
   // without stale closures.
@@ -68,12 +73,14 @@ export default function useVoiceApp() {
   }, [dispatch]);
 
   // Hands-free: after the agent speaks (or we hear nothing), reopen the mic.
-  const _autoListen = useCallback(() => {
+  // delayMs lớn (BARGE_IN_ARM_MS) dùng khi AI vừa bắt đầu đọc: mở mic ngay lúc đó
+  // thì mấy giây đầu rất dễ bị tiếng ồn cắt ngang câu trả lời.
+  const _autoListen = useCallback((delayMs = 450) => {
     setTimeout(() => {
-      // Don't reopen if busy, already listening, OR the user manually paused.
-      if (busyRef.current || recordingRef.current || pausedRef.current) return;
+      // Không mở lại khi: đang xử lý lượt trước, đang thu, hoặc người dùng tự tắt mic.
+      if (busyRef.current || processingRef.current || recordingRef.current || pausedRef.current) return;
       startListeningRef.current();
-    }, 450);
+    }, delayMs);
   }, []);
 
   // ---- Speech-to-text (browser Web Speech, primary) ----
@@ -166,14 +173,39 @@ export default function useVoiceApp() {
           const wavBlob = await recorder.stop();
           recordingRef.current = false;
           dispatch({ type: 'SET_RECORDING', payload: false });
-          if (wavBlob && wavBlob.size > 1000) {
-            dispatch({ type: 'SET_STATUS', payload: { main: 'Đang nhận diện giọng nói…', sub: '' } });
-            try {
-              const text = await api.speechToText(wavBlob, 'speech.wav', STT_ENGINE);
-              if (text) { emptyRef.current = 0; dispatch({ type: 'SET_TRANSCRIPT', payload: text }); sendRef.current(text); }
-              else { _autoListen(); }
-            } catch { dispatch({ type: 'SET_STATUS', payload: { main: 'Lỗi nhận diện', sub: 'Chạm màn hình để thử lại' } }); }
-          } else { _autoListen(); }
+          dispatch({ type: 'SET_VOICE_ACTIVE', payload: false });
+
+          // Ghi âm quá ngắn (ho, cộp, người dùng im) -> nghe lại ngay, đừng gửi lên
+          // STT làm gì. recorder.stop() trả null khi VAD chưa từng thấy tiếng nói.
+          if (!wavBlob || wavBlob.size <= 1000) { _autoListen(); return; }
+
+          // ĐÃ có ghi âm -> khoá mic cho tới khi xử lý xong hẳn. Không có cờ này thì
+          // _autoListen ở nhánh khác có thể mở mic ngay giữa lúc đang STT/gọi agent.
+          processingRef.current = true;
+          dispatch({ type: 'SET_STATUS', payload: { main: 'Đang nhận diện giọng nói…', sub: '' } });
+          let text = '';
+          try {
+            text = await api.speechToText(wavBlob, 'speech.wav', STT_ENGINE);
+          } catch (err) {
+            console.warn('STT failed:', err);
+          } finally {
+            processingRef.current = false;   // dù hỏng cũng phải nhả khoá, không thì kẹt luôn
+          }
+
+          if (text) {
+            emptyRef.current = 0;
+            dispatch({ type: 'SET_TRANSCRIPT', payload: text });
+            sendRef.current(text);
+          } else {
+            // Không ra chữ (im lặng / nhiễu / STT lỗi) -> tự mở nghe tiếp, có nhắc
+            // nhẹ sau vài lần trượt liên tiếp để người dùng biết mà nói lại.
+            emptyRef.current += 1;
+            if (emptyRef.current >= 3) {
+              emptyRef.current = 0;
+              dispatch({ type: 'SET_STATUS', payload: { main: 'Mình chưa nghe rõ', sub: 'Bạn nói lại giúp mình nhé' } });
+            }
+            _autoListen();
+          }
         },
       });
     } catch (err) {
@@ -323,7 +355,9 @@ export default function useVoiceApp() {
     } finally {
       busyRef.current = false;
       dispatch({ type: 'SET_BUSY', payload: false });
-      if (keepListening) _autoListen();      // hands-free: keep the conversation going
+      // Hands-free: nghe tiếp. Nhưng AI vừa bắt đầu đọc nên đợi BARGE_IN_ARM_MS rồi
+      // mới mở mic — mở ngay thì tiếng ồn mấy giây đầu hay cắt phựt câu trả lời.
+      if (keepListening) _autoListen(BARGE_IN_ARM_MS);
     }
   }, [dispatch, _autoListen, _localFallback]);
   sendRef.current = _send;
