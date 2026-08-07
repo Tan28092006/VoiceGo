@@ -51,5 +51,10 @@ services:
         value: whisper-large-v3 # bản full nhận tiếng Việt tốt hơn turbo
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
+      # Model theo TỪNG key, đúng thứ tự key trong pool (GEMINI_API_KEY rồi tới
+      # GEMINI_API_KEYS): gemini-2.5-flash đã bị khoá với tài khoản mới (404), chỉ
+      # key cũ dùng được — key mới phải đi gemini-3.1-flash-lite.
+      - key: GEMINI_MODELS
+        value: gemini-2.5-flash,gemini-3.1-flash-lite,gemini-3.1-flash-lite
       - key: MAPBOX_TOKEN          # lưới đỡ cho geocode/directions; để trống -> dùng OSM/OSRM
         sync: false
