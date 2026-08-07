@@ -57,7 +57,8 @@ export default class VoiceRecorder {
         // (?vadmult=6&vadframes=5) để khỏi phải build lại mỗi lần thử.
         const q = new URLSearchParams(window.location.search);
         const num = (k, d) => (Number(q.get(k)) > 0 ? Number(q.get(k)) : d);
-        this.speechThreshold = opts.speechThreshold || 0.0015;  // sàn tuyệt đối
+        // Sàn tuyệt đối: dù nền có thấp cỡ nào cũng không nhận dưới mức này.
+        this.speechThreshold = opts.speechThreshold || num('vadmin', 0.006);
         this.floorMult = opts.floorMult || num('vadmult', 5);   // vượt nền mấy lần mới tính
         // Số khung LIÊN TIẾP phải đủ to mới coi là đang nói (~85ms/khung). Đây là
         // nút chống-nhiễu quan trọng nhất: ho/cộp/va chạm chỉ kéo 150-250ms nên
@@ -119,12 +120,19 @@ export default class VoiceRecorder {
                     const warming = now - this._t0 < this.warmupMs;   // chờ nền ổn định
                     const aboveFloor = rms > threshold;
 
-                    // Nền chỉ học từ khung IM LẶNG, theo kiểu min-tracking: tụt xuống ngay
-                    // khi yên hơn, bò lên rất chậm. Bản trước học cả khung đang nói nên nền
-                    // chạy theo giọng -> ngưỡng luôn cao hơn rms -> KHÔNG BAO GIỜ trigger.
-                    if (!aboveFloor || warming) {
-                        if (this._floor == null || rms < this._floor) this._floor = rms;
-                        else this._floor = this._floor * 0.97 + rms * 0.03;
+                    // Nền = mức ồn ĐIỂN HÌNH, không phải mức nhỏ nhất. Min-tracking (bản
+                    // trước) bám vào đáy: phòng ồn dao động 0.002-0.010 thì nền kẹt ở
+                    // 0.002 -> ngưỡng 0.010 -> đỉnh nhiễu thường cũng vượt, và vì nhiễu
+                    // liên tục nên tăng số khung cũng không cứu được.
+                    // EMA lên CHẬM xuống NHANH: tiếng ồn kéo dài thì nền dâng theo (bớt
+                    // nhạy), còn một câu nói ngắn không kịp kéo nền lên. Đóng băng nền khi
+                    // đã xác định là đang nói, để giọng không làm hỏng ước lượng.
+                    if (!this._speechStarted) {
+                        if (this._floor == null) this._floor = rms;
+                        else {
+                            const a = rms > this._floor ? 0.02 : 0.10;
+                            this._floor = this._floor * (1 - a) + rms * a;
+                        }
                     }
 
                     if (!this._dbgAt || now - this._dbgAt > 200) {
