@@ -58,12 +58,12 @@ export default class VoiceRecorder {
         const q = new URLSearchParams(window.location.search);
         const num = (k, d) => (Number(q.get(k)) > 0 ? Number(q.get(k)) : d);
         // Sàn tuyệt đối: dù nền có thấp cỡ nào cũng không nhận dưới mức này.
-        this.speechThreshold = opts.speechThreshold || num('vadmin', 0.010);
-        this.floorMult = opts.floorMult || num('vadmult', 6);   // vượt nền mấy lần mới tính
+        this.speechThreshold = opts.speechThreshold || num('vadmin', 0.006);
+        this.floorMult = opts.floorMult || num('vadmult', 5);   // vượt nền mấy lần mới tính
         // Số khung LIÊN TIẾP phải đủ to mới coi là đang nói (~85ms/khung). Đây là
         // nút chống-nhiễu quan trọng nhất: ho/cộp/va chạm chỉ kéo 150-250ms nên
         // không thể đạt 7 khung (~600ms), còn một câu nói thì vượt thừa.
-        this.speechFrames = opts.speechFrames || num('vadframes', 10);
+        this.speechFrames = opts.speechFrames || num('vadframes', 8);
         this.warmupMs = opts.warmupMs || 400;     // để nền kịp học mức echo của TTS
         this._speechStarted = false;
         this._silenceStart = null;
@@ -71,6 +71,7 @@ export default class VoiceRecorder {
         this._hits = 0;
         this._floor = null;
         this._voiceOn = false;
+        this._peak = 0;
         this._quietSince = null;
         this._t0 = (typeof performance !== "undefined" ? performance.now() : 0);
 
@@ -132,6 +133,10 @@ export default class VoiceRecorder {
                         this._floor == null ? 0 : this._floor * this.floorMult);
                     const warming = now - this._t0 < this.warmupMs;   // chờ nền ổn định
                     const aboveFloor = rms > threshold;
+                    // Giữ mức TO NHẤT nghe được trong lượt này. Đây là số quyết định:
+                    // so peak (lúc nói) với floor (lúc im) là biết ngay ngưỡng phải đặt
+                    // đâu, khỏi vặn mò từng nút.
+                    if (rms > (this._peak || 0)) this._peak = rms;
 
                     // Nền = mức ồn ĐIỂN HÌNH, không phải mức nhỏ nhất. Min-tracking (bản
                     // trước) bám vào đáy: phòng ồn dao động 0.002-0.010 thì nền kẹt ở
@@ -150,8 +155,9 @@ export default class VoiceRecorder {
 
                     if (!this._dbgAt || now - this._dbgAt > 200) {
                         this._dbgAt = now;
-                        debugBadge(`rms ${rms.toFixed(4)} | th ${threshold.toFixed(4)}`
-                            + ` | x${this.floorMult} | ${this._hits || 0}/${this.speechFrames} khung`
+                        debugBadge(`rms ${rms.toFixed(4)} | PEAK ${(this._peak || 0).toFixed(4)}`
+                            + ` | floor ${(this._floor || 0).toFixed(4)} | th ${threshold.toFixed(4)}`
+                            + ` | ${this._hits || 0}/${this.speechFrames}`
                             + ` | ${this._speechStarted ? 'SPEAK' : (warming ? 'warm' : 'idle')}`);
                     }
 
@@ -233,7 +239,10 @@ export default class VoiceRecorder {
 
         // If the user didn't speak at all, don't return an audio blob (prevents silent backend STT calls)
         if (!this._speechStarted) {
-            console.log('[voiceRecorder] khong co tieng noi -> khong gui STT');
+            const info = `peak ${(this._peak || 0).toFixed(4)} | floor ${(this._floor || 0).toFixed(4)}`
+                + ` | can > ${Math.max(this.speechThreshold, (this._floor || 0) * this.floorMult).toFixed(4)}`;
+            console.log('[voiceRecorder] KHONG nhan dien duoc ->', info);
+            debugBadge(`KHONG NGHE DUOC | ${info}`);
             return null;
         }
         const secs = length / inputRate;
