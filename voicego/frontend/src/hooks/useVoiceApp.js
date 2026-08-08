@@ -29,7 +29,11 @@ export default function useVoiceApp() {
 
   // Sau khi AI bắt đầu đọc, chờ chừng này rồi mới mở mic lại. Mở sớm thì tiếng ồn
   // trong mấy giây đầu hay cắt ngang ngay câu trả lời vừa mới bắt đầu.
-  const BARGE_IN_ARM_MS = 3000;
+  // Vặn được bằng ?bargein=6000 để thử trên máy thật, khỏi build lại.
+  const BARGE_IN_ARM_MS = (() => {
+    const v = Number(new URLSearchParams(window.location.search).get('bargein'));
+    return v > 0 ? v : 4000;
+  })();
 
   // Latest-value refs so the hands-free loop callbacks can call each other
   // without stale closures.
