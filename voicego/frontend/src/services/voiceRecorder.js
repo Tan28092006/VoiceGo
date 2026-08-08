@@ -135,7 +135,13 @@ export default class VoiceRecorder {
                     // giọng dao động quanh ngưỡng sẽ làm bộ đếm cộng-trừ quanh 0, không
                     // bao giờ đạt đủ khung -> phải chờ hết noSpeechMs rồi mở lại, lặp vô
                     // tận (đèn nhảy xanh-đỏ liên tục mà không bao giờ gửi đi).
-                    const threshold = this._hits > 0 ? enterTh * 0.55 : enterTh;
+                    // CHỈ hạ ngưỡng trong lúc đang GOM khung để xác nhận. Sau khi đã xác
+                    // nhận là giọng nói thì phải quay lại ngưỡng chặt, vì lúc đó ngưỡng
+                    // dùng để phát hiện IM LẶNG mà dừng: giữ ngưỡng thấp thì tiếng ồn
+                    // phòng cũng bị coi là còn đang nói -> không bao giờ dừng để gửi đi.
+                    const threshold = (!this._speechStarted && this._hits > 0)
+                        ? enterTh * 0.55
+                        : enterTh;
                     const warming = now - this._t0 < this.warmupMs;   // chờ nền ổn định
                     const aboveFloor = rms > threshold;
                     // Giữ mức TO NHẤT nghe được trong lượt này. Đây là số quyết định:
