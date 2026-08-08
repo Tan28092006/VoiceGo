@@ -146,3 +146,40 @@
     transform: translateY(0);
   }
 }
+
+/* Spinner trong nút + khung "đang đánh thức máy chủ". Render free ngủ sau 15 phút
+   nên request ĐẦU TIÊN mất ~30s; không có phản hồi thị giác thì người xem tưởng
+   app hỏng và thoát ra. */
+.btn-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 9px;
+  vertical-align: -3px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: btn-spin 0.8s linear infinite;
+}
+.btn-spinner.dark {
+  margin-right: 12px;
+  border-color: rgba(0, 177, 79, 0.25);
+  border-top-color: var(--color-accent-green);
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+
+.login-booting {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 177, 79, 0.10);
+  border: 1px solid rgba(0, 177, 79, 0.35);
+  color: var(--color-text-primary);
+  text-align: left;
+}

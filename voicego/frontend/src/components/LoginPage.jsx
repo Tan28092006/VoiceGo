@@ -8,6 +8,7 @@ function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [slow, setSlow] = useState(false);   // backend đang khởi động (cold start)
+  const [pending, setPending] = useState(null);  // nút nào đang chạy -> hiện spinner đúng nút
 
   // Warm-up: đánh thức backend Render NGAY khi mở trang, trong lúc người dùng còn
   // đang gõ email/mật khẩu — để lúc bấm "Đăng nhập" máy chủ đã ấm sẵn.
@@ -15,9 +16,10 @@ function LoginPage({ onLogin }) {
     fetch(`${BACKEND_URL}/api/health`).catch(() => {});
   }, []);
 
-  const doLogin = async (em, pw) => {
+  const doLogin = async (em, pw, which = "form") => {
     setError("");
     setIsLoading(true);
+    setPending(which);
     setSlow(false);
     // Nếu quá 4s chưa xong -> nhiều khả năng máy chủ free đang cold-start.
     const slowTimer = setTimeout(() => setSlow(true), 4000);
@@ -45,6 +47,7 @@ function LoginPage({ onLogin }) {
       clearTimeout(slowTimer);
       setIsLoading(false);
       setSlow(false);
+      setPending(null);
     }
   };
 
@@ -60,7 +63,7 @@ function LoginPage({ onLogin }) {
       : { em: "minhanh.voicego@example.com", pw: "password123" };
     setEmail(creds.em);
     setPassword(creds.pw);
-    doLogin(creds.em, creds.pw);
+    doLogin(creds.em, creds.pw, role);
   };
 
   return (
@@ -82,6 +85,21 @@ function LoginPage({ onLogin }) {
       <div className="login-form-container">
         {/* Trải nghiệm nhanh — không cần tài khoản (cho người xem CV / HR) */}
         <div style={{ marginBottom: 18 }}>
+          {/* Hiện NGAY khi bấm: máy chủ Render free ngủ sau 15' nên request đầu mất
+              ~30s. Trước đây chỉ có cái nút bị mờ đi, người xem tưởng app hỏng. */}
+          {isLoading && (
+            <div className="login-booting" role="status" aria-live="polite">
+              <span className="btn-spinner dark" aria-hidden="true" />
+              <div>
+                <strong>Đang đánh thức máy chủ…</strong>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+                  {slow
+                    ? "Máy chủ miễn phí ngủ khi không dùng — lần đầu mất ~30 giây. Bạn chờ chút nhé."
+                    : "Đang kết nối, vui lòng đợi…"}
+                </div>
+              </div>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => quickDemo("passenger")}
@@ -89,7 +107,9 @@ function LoginPage({ onLogin }) {
             className="login-button"
             style={{ background: "#00b14f", marginBottom: 10 }}
           >
-            🎙️ Dùng thử ngay — Khách khiếm thị (demo)
+            {pending === "passenger" ? (
+              <><span className="btn-spinner" aria-hidden="true" />Đang đánh thức máy chủ…</>
+            ) : "🎙️ Dùng thử ngay — Khách khiếm thị (demo)"}
           </button>
           <button
             type="button"
@@ -98,7 +118,9 @@ function LoginPage({ onLogin }) {
             className="login-button"
             style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.25)" }}
           >
-            🚗 Vào vai Tài xế (demo)
+            {pending === "driver" ? (
+              <><span className="btn-spinner" aria-hidden="true" />Đang đánh thức máy chủ…</>
+            ) : "🚗 Vào vai Tài xế (demo)"}
           </button>
           <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", margin: "12px 0 0" }}>
             Không cần đăng nhập — bấm “Dùng thử ngay” để trải nghiệm đặt xe bằng giọng nói.
