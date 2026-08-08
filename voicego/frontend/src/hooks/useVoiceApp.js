@@ -158,7 +158,9 @@ export default function useVoiceApp() {
     try {
       await recorder.start({
         silenceMs: 950,          // cut off a bit sooner -> lower latency
-        noSpeechMs: 20000,       // give plenty of time (20s) so it doesn't timeout while long TTS is playing
+        // Không nghe được gì thì bỏ cuộc sau 9s rồi mở lại. Trước để 20s: mỗi lần
+        // trượt là màn hình đứng im 20 giây nên nhìn như treo hẳn.
+        noSpeechMs: 9000,
         // Đèn báo mic đang nghe thấy giọng -> nút mic đổi trạng thái + hiện chữ
         // "Đang nghe bạn nói…". Nhìn thấy được nên biết ngay VAD có ăn hay không.
         onVoice: (active) => {

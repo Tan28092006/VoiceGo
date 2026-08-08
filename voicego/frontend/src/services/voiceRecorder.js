@@ -59,7 +59,7 @@ export default class VoiceRecorder {
         const num = (k, d) => (Number(q.get(k)) > 0 ? Number(q.get(k)) : d);
         // Sàn tuyệt đối: dù nền có thấp cỡ nào cũng không nhận dưới mức này.
         this.speechThreshold = opts.speechThreshold || num('vadmin', 0.006);
-        this.floorMult = opts.floorMult || num('vadmult', 5);   // vượt nền mấy lần mới tính
+        this.floorMult = opts.floorMult || num('vadmult', 3.5);   // vượt nền mấy lần mới tính
         // Số khung LIÊN TIẾP phải đủ to mới coi là đang nói (~85ms/khung). Đây là
         // nút chống-nhiễu quan trọng nhất: ho/cộp/va chạm chỉ kéo 150-250ms nên
         // không thể đạt 7 khung (~600ms), còn một câu nói thì vượt thừa.
@@ -129,8 +129,13 @@ export default class VoiceRecorder {
                     // con số cố định không thể vừa phục vụ mic bị AEC gate (nền ~0.0005)
                     // vừa phục vụ mic rò tiếng TTS từ loa (nền ~0.01 -> tự cắt lời mình).
                     // Ngưỡng phải tính TỪ nền CŨ, trước khi cập nhật nền (xem dưới).
-                    const threshold = Math.max(this.speechThreshold,
+                    const enterTh = Math.max(this.speechThreshold,
                         this._floor == null ? 0 : this._floor * this.floorMult);
+                    // HYSTERESIS: vào thì khó, GIỮ thì dễ. Chỉ có một ngưỡng duy nhất thì
+                    // giọng dao động quanh ngưỡng sẽ làm bộ đếm cộng-trừ quanh 0, không
+                    // bao giờ đạt đủ khung -> phải chờ hết noSpeechMs rồi mở lại, lặp vô
+                    // tận (đèn nhảy xanh-đỏ liên tục mà không bao giờ gửi đi).
+                    const threshold = this._hits > 0 ? enterTh * 0.55 : enterTh;
                     const warming = now - this._t0 < this.warmupMs;   // chờ nền ổn định
                     const aboveFloor = rms > threshold;
                     // Giữ mức TO NHẤT nghe được trong lượt này. Đây là số quyết định:
@@ -145,12 +150,17 @@ export default class VoiceRecorder {
                     // EMA lên CHẬM xuống NHANH: tiếng ồn kéo dài thì nền dâng theo (bớt
                     // nhạy), còn một câu nói ngắn không kịp kéo nền lên. Đóng băng nền khi
                     // đã xác định là đang nói, để giọng không làm hỏng ước lượng.
-                    if (!this._speechStarted) {
+                    // Học nền theo ngưỡng VÀO (enterTh), không theo ngưỡng giữ — nếu dùng
+                    // ngưỡng giữ thì lúc đang gom khung sẽ có khung ồn bị tính là "im" và
+                    // kéo nền lên sai.
+                    if (!this._speechStarted && rms <= enterTh) {
                         if (this._floor == null) this._floor = rms;
                         else {
                             const a = rms > this._floor ? 0.02 : 0.10;
                             this._floor = this._floor * (1 - a) + rms * a;
                         }
+                    } else if (this._floor == null) {
+                        this._floor = rms;
                     }
 
                     if (!this._dbgAt || now - this._dbgAt > 200) {
