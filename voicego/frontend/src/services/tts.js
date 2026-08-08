@@ -26,17 +26,27 @@ export function unlockAudio() {
   if (window.speechSynthesis) { try { window.speechSynthesis.resume(); } catch (e) {} }
 }
 
-export async function speak(text) {
+/**
+ * speak(text, { onStart })
+ * onStart chạy đúng lúc LOA BẮT ĐẦU PHÁT, không phải lúc gửi request. Khác nhau
+ * đáng kể: TTS mất 0.4-2.7s mới ra tiếng, nên ai đếm thời gian từ lúc gọi speak()
+ * sẽ lệch mất khoảng đó (dùng để tính lúc nào mới cho phép ngắt lời).
+ */
+export async function speak(text, opts = {}) {
   stop();
   const my = genToken;
   if (!text) return;
-  
+
   const url = `${BACKEND_URL}/api/voice/tts_stream?text=${encodeURIComponent(text)}`;
-  
+
   return new Promise((resolve) => {
     if (my !== genToken) { resolve(); return; }
     const a = audioEl();
     const done = () => { resolve(); };
+    a.onplaying = () => {
+      if (my !== genToken) return;          // đã bị speak() mới thay thế
+      try { opts.onStart?.(); } catch (e) {}
+    };
     a.onended = done;
     a.onerror = () => {
       // If streaming fails, fallback to browser TTS

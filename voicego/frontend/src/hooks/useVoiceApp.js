@@ -350,9 +350,11 @@ export default function useVoiceApp() {
         dispatch({ type: 'SET_STATE', payload: 'listening' });
       }
 
-      if (reply && !spoke) { 
-        _streamText(reply); 
-        speak(reply).catch(console.error); 
+      if (reply && !spoke) {
+        _streamText(reply);
+        // Mở mic 4s sau khi LOA BẮT ĐẦU PHÁT (onStart), không phải sau khi gọi
+        // speak() — TTS mất 0.4-2.7s mới ra tiếng nên đếm từ lúc gọi là khoá thiếu.
+        speak(reply, { onStart: () => _autoListen(BARGE_IN_ARM_MS) }).catch(console.error);
       }
     } catch (err) {
       console.error('Agent error -> local fallback:', err);
@@ -361,9 +363,11 @@ export default function useVoiceApp() {
     } finally {
       busyRef.current = false;
       dispatch({ type: 'SET_BUSY', payload: false });
-      // Hands-free: nghe tiếp. Nhưng AI vừa bắt đầu đọc nên đợi BARGE_IN_ARM_MS rồi
-      // mới mở mic — mở ngay thì tiếng ồn mấy giây đầu hay cắt phựt câu trả lời.
-      if (keepListening) _autoListen(BARGE_IN_ARM_MS);
+      // Lưới an toàn: bình thường mic được mở bởi onStart của speak() ở trên. Nhưng
+      // nếu TTS hỏng hẳn (không có tiếng, onStart không bao giờ chạy) thì vẫn phải
+      // mở lại, không thì cuộc hội thoại đứng luôn. Hẹn dài hơn để không tranh với
+      // onStart; _autoListen tự bỏ qua nếu mic đã mở rồi.
+      if (keepListening) _autoListen(BARGE_IN_ARM_MS + 5000);
     }
   }, [dispatch, _autoListen, _localFallback]);
   sendRef.current = _send;
@@ -494,10 +498,14 @@ export default function useVoiceApp() {
       const greet = 'Xin chào, tôi là trợ lý đặt xe, bạn muốn đến đâu?';
       dispatch({ type: 'SET_STATUS', payload: { main: 'Xin chào! Bạn muốn đến đâu?', sub: 'Hãy nói điểm đến của bạn' } });
       _streamText(greet);
-      speak(greet).catch(console.error);
+      // Lời chào cũng là một câu AI đọc -> áp cùng luật: chỉ mở mic 4s sau khi LOA
+      // bắt đầu phát, để tiếng ồn không cắt ngay câu chào. Kèm lưới an toàn nếu TTS
+      // hỏng (không có tiếng thì onStart không chạy).
+      speak(greet, {
+        onStart: () => { if (!cancelled) _autoListen(BARGE_IN_ARM_MS); },
+      }).catch(console.error);
       if (cancelled) return;
-      // The login click was the user gesture; start listening right after.
-      startListeningRef.current(false);
+      _autoListen(BARGE_IN_ARM_MS + 5000);
     })();
     return () => { cancelled = true; };
   }, [dispatch]);
