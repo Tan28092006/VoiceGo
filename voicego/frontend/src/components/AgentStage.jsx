@@ -27,7 +27,11 @@ export default function AgentStage({ compact }) {
       </div>
 
       <div className="agent-stage-body" ref={bodyRef} role="status" aria-live="polite">
+        {state.booting && <span className="agent-boot-spinner" aria-hidden="true" />}
         <p className="agent-stage-text">{text}<span className="caret" /></p>
+        {state.booting && state.substatus && (
+          <p className="agent-boot-sub">{state.substatus}</p>
+        )}
       </div>
 
       {state.transcript && (

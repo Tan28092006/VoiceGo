@@ -62,3 +62,24 @@
 .agent-stage.compact .agent-stage-body { align-items: flex-start; justify-content: flex-start; text-align: left; }
 .agent-stage.compact .agent-stage-text { font-size: clamp(1rem, 3.4vw, 1.25rem); line-height: 1.4; text-align: left; }
 .agent-stage.compact .agent-stage-transcript { text-align: left; }
+
+/* Vòng xoay lúc đánh thức máy chủ (Render free ngủ -> lần đầu ~30s). Không có nó
+   thì màn hình đứng im, người xem tưởng app treo rồi thoát. */
+.agent-boot-spinner {
+  display: block;
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 14px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--color-accent-green);
+  border-radius: 50%;
+  animation: agent-boot-spin 0.9s linear infinite;
+}
+@keyframes agent-boot-spin { to { transform: rotate(360deg); } }
+
+.agent-boot-sub {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}

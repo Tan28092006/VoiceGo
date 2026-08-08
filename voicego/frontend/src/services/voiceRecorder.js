@@ -58,12 +58,12 @@ export default class VoiceRecorder {
         const q = new URLSearchParams(window.location.search);
         const num = (k, d) => (Number(q.get(k)) > 0 ? Number(q.get(k)) : d);
         // Sàn tuyệt đối: dù nền có thấp cỡ nào cũng không nhận dưới mức này.
-        this.speechThreshold = opts.speechThreshold || num('vadmin', 0.006);
-        this.floorMult = opts.floorMult || num('vadmult', 5);   // vượt nền mấy lần mới tính
+        this.speechThreshold = opts.speechThreshold || num('vadmin', 0.010);
+        this.floorMult = opts.floorMult || num('vadmult', 6);   // vượt nền mấy lần mới tính
         // Số khung LIÊN TIẾP phải đủ to mới coi là đang nói (~85ms/khung). Đây là
         // nút chống-nhiễu quan trọng nhất: ho/cộp/va chạm chỉ kéo 150-250ms nên
         // không thể đạt 7 khung (~600ms), còn một câu nói thì vượt thừa.
-        this.speechFrames = opts.speechFrames || num('vadframes', 7);
+        this.speechFrames = opts.speechFrames || num('vadframes', 10);
         this.warmupMs = opts.warmupMs || 400;     // để nền kịp học mức echo của TTS
         this._speechStarted = false;
         this._silenceStart = null;
@@ -233,8 +233,14 @@ export default class VoiceRecorder {
 
         // If the user didn't speak at all, don't return an audio blob (prevents silent backend STT calls)
         if (!this._speechStarted) {
+            console.log('[voiceRecorder] khong co tieng noi -> khong gui STT');
             return null;
         }
+        const secs = length / inputRate;
+        const preRoll = ((this.speechFrames + 4) * 4096) / inputRate;
+        console.log(`[voiceRecorder] doan ghi ${secs.toFixed(2)}s `
+            + `(gom ~${preRoll.toFixed(2)}s tien ghi TRUOC khi nhan dien + phan noi sau do)`);
+        debugBadge(`gui STT: ${secs.toFixed(2)}s (tien ghi ${preRoll.toFixed(2)}s)`);
 
         const downsampled = this._downsample(merged, inputRate, this.targetRate);
         return this._encodeWav(downsampled, this.targetRate);

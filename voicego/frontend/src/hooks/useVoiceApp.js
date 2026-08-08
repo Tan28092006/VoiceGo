@@ -475,9 +475,15 @@ export default function useVoiceApp() {
     startedRef.current = true;
     let cancelled = false;
     (async () => {
+      // Render free ngủ sau 15' -> lần gọi đầu có thể mất ~30-50s. Phải cho thấy
+      // đang chạy chứ không để màn hình đứng im như bị treo.
+      dispatch({ type: 'SET_BOOTING', payload: true });
+      dispatch({ type: 'SET_STATUS', payload: {
+        main: 'Đang kết nối máy chủ…', sub: 'Lần đầu có thể mất khoảng 30 giây' } });
       let online = false;
       try { online = (await api.checkHealth())?.status === 'ok'; } catch { online = false; }
       if (cancelled) return;
+      dispatch({ type: 'SET_BOOTING', payload: false });
       dispatch({ type: 'SET_BACKEND_ONLINE', payload: online });
       const greet = 'Xin chào, tôi là trợ lý đặt xe, bạn muốn đến đâu?';
       dispatch({ type: 'SET_STATUS', payload: { main: 'Xin chào! Bạn muốn đến đâu?', sub: 'Hãy nói điểm đến của bạn' } });

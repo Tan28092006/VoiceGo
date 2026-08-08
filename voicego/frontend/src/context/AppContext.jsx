@@ -8,6 +8,7 @@ const initialState = {
   screen: 'home',      // 'home' (Grab-like landing) | 'voice' (booking agent)
   user: null,          // { id, role, ... }
   backendOnline: false,
+  booting: true,       // đang đánh thức máy chủ (Render free ngủ -> lần đầu ~30s)
   origin: { name: 'Trường Đại học Quốc tế', lat: 10.8782, lng: 106.8012 },
   destination: null,   // { name, address, lat, lng, accessible? }
   candidates: null,    // [{ name, address, lat, lng, accessible? }] shown on the map
@@ -34,6 +35,7 @@ function appReducer(state, action) {
     case 'SET_SCREEN': return { ...state, screen: action.payload };
     case 'SET_USER': return { ...state, user: action.payload };
     case 'SET_ORIGIN': return { ...state, origin: { ...state.origin, ...action.payload } };
+    case 'SET_BOOTING': return { ...state, booting: action.payload };
     case 'SET_BACKEND_ONLINE': return { ...state, backendOnline: action.payload };
     case 'SET_DESTINATION': return { ...state, destination: action.payload };
     case 'SET_CANDIDATES': return { ...state, candidates: action.payload };
