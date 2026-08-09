@@ -444,12 +444,21 @@ def _poi_queries(name):
     Cơ sở chính không được OSM đánh số, nên "cơ sở 1" luôn MISS -> phải có dạng tên
     trần làm phương án hai.
     """
-    s = re.sub(r"^(Trường|Trung tâm|Công ty|Chi nhánh|Cơ sở)\s+", "", (name or "").strip(),
-               flags=re.IGNORECASE)
-    plain = re.sub(r"\s+", " ", re.sub(r"[()]", " ", s)).strip()   # "(cơ sở 2)" -> "cơ sở 2"
-    bare = re.sub(r"\s*\([^)]*\)", "", s).strip()                  # bỏ hẳn hậu tố chi nhánh
-    queries = [q for q in (plain, bare) if q]
-    return list(dict.fromkeys(queries))       # giữ thứ tự, bỏ trùng
+    raw = (name or "").strip()
+    if not raw:
+        return []
+    # Bỏ tiền tố loại hình chung. Đây là quy tắc NGÔN NGỮ, không phải danh sách địa
+    # điểm — nhưng vẫn chỉ là phỏng đoán, nên bản gốc luôn được thử lại ở cuối thay vì
+    # bị loại. Không có địa điểm hay toạ độ nào bị fix cứng ở đây.
+    nopre = re.sub(r"^(Trường|Trung tâm|Công ty|Chi nhánh|Cơ sở)\s+", "", raw, flags=re.IGNORECASE)
+    def _plain(s):    # "(cơ sở 2)" -> "cơ sở 2": bỏ ngoặc, GIỮ chữ bên trong
+        return re.sub(r"\s+", " ", re.sub(r"[()]", " ", s)).strip()
+    def _bare(s):     # bỏ hẳn phần trong ngoặc
+        return re.sub(r"\s*\([^)]*\)", "", s).strip()
+    # Thứ tự = thứ tự ĐO ĐƯỢC là tốt dần xuống, và không dạng nào bị mất: nếu dạng
+    # trước trượt thì thử dạng sau, nên địa điểm nào cần giữ "Trường" vẫn ra kết quả.
+    variants = [_plain(nopre), _bare(nopre), _plain(raw), _bare(raw), raw]
+    return list(dict.fromkeys([v for v in variants if v]))[:4]
 
 
 def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=False):
