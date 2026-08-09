@@ -64,7 +64,18 @@ export async function speak(text, opts = {}) {
       try { opts.onStart?.(); } catch (e) {}
     };
     a.onended = done;
-    a.onerror = () => fallback('audio error');
+    a.onerror = () => {
+      // stop() làm removeAttribute('src') + load(), việc đó bắn một sự kiện 'error'
+      // KHÔNG ĐỒNG BỘ (empty src). Nó tới sau khi speak() mới đã gắn handler + gán
+      // src, nên bị hiểu là "file hỏng" và rơi xuống giọng trình duyệt một cách oan.
+      // Chỉ coi là lỗi thật khi src đang trỏ đúng URL của lượt này.
+      const cur = a.currentSrc || a.src || '';
+      if (!cur || !cur.includes('tts_stream')) {
+        console.warn('[TTS] bo qua error cu (empty src), khong fallback');
+        return;
+      }
+      fallback('audio error');
+    };
     a.muted = false;
     a.src = url;
 
@@ -105,13 +116,16 @@ export function browserSpeak(text) {
 export function stop() {
   console.log('[TTS] stop() called. Halting audio playback.');
   genToken++;   // invalidate any in-flight speak()
-  if (el) { 
-    try { 
-      el.pause(); 
+  if (el) {
+    try {
+      // CHỈ pause. Trước đây còn removeAttribute('src') + load() để cắt hẳn kết nối
+      // stream, nhưng load() trên src rỗng bắn ra sự kiện 'error' không đồng bộ, đến
+      // sau khi lượt speak() kế tiếp đã gắn handler -> lượt đó bị fallback oan sang
+      // giọng trình duyệt. pause() là đủ để im tiếng ngay, và speak() sau đó gán src
+      // mới nên stream cũ tự bị thay thế.
+      el.pause();
       el.currentTime = 0;
-      el.removeAttribute('src');
-      el.load();
-    } catch (e) {} 
+    } catch (e) {}
   }
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 }
