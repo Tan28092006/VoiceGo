@@ -151,7 +151,18 @@ TOOLS = [
         "description": "Tra điểm đến người dùng nói -> tên, địa chỉ, tọa độ + các cơ sở khác (alternatives). "
                        "KHÔNG trả khoảng cách/giá. Dùng ở bước 1 và mỗi khi người dùng đổi điểm.",
         "parameters": {"type": "object",
-                       "properties": {"query": {"type": "string", "description": "Địa điểm người dùng nói"}},
+                       "properties": {"query": {"type": "string", "description":
+                           "Địa điểm cần tra, do BẠN soạn — không cần bê nguyên câu người dùng nói. "
+                           "Cách soạn cho bộ tra bản đồ dễ tìm nhất (đo trên dữ liệu thật): "
+                           "(1) GIỮ phần chi nhánh dạng chữ thường, KHÔNG dấu ngoặc — "
+                           "'Đại học Công nghiệp Hà Nội cơ sở 2' tìm ra đúng cơ sở, "
+                           "còn '(Cơ sở 2)' thì TRƯỢT; "
+                           "(2) BỎ tiền tố loại hình ('Trường', 'Công ty', 'Trung tâm') — "
+                           "'Trường Đại học ... Cơ sở 2' cũng TRƯỢT; "
+                           "(3) KHÔNG nhồi số nhà/phường/quận vào cùng tên riêng — địa chỉ hành chính "
+                           "làm bộ tra trượt hẳn, cứ để tên riêng đứng một mình; "
+                           "(4) người dùng nói thêm chi tiết (quận, cơ sở, thành phố) thì ghép vào để tra lại "
+                           "cho đúng nhánh."}},
                        "required": ["query"]},
     }},
     {"type": "function", "function": {
