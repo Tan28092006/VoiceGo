@@ -234,8 +234,10 @@ def _geocode_text(text):
 
 
 _NEXT_CANDIDATES = (
-    "Đọc danh sách theo SỐ THỨ TỰ, nhưng CHỈ đọc phần PHÂN BIỆT được các lựa chọn "
-    "(thường là đường hoặc quận), BỎ phần giống nhau và BỎ số nhà/phường/thành phố. "
+    "Mỗi candidate có trường 'label' đã được tính sẵn để PHÂN BIỆT các lựa chọn — "
+    "ĐỌC ĐÚNG label đó, KHÔNG tự chọn phần khác của địa chỉ (địa chỉ các cơ sở có thể "
+    "trùng nhau, tự chọn sẽ ra 'một, Xuân Thủy; hai, Xuân Thủy; ba, Xuân Thủy' và người "
+    "dùng không thể chọn được). BỎ số nhà/phường/thành phố. "
     "Mẫu: 'Có 3 cơ sở: một, Cầu Diễn; hai, Tây Tựu; ba, Phủ Lý. Bạn chọn số mấy?' — "
     "TỐI ĐA 1 câu liệt kê + 1 câu hỏi. Người dùng chỉ cần đủ để chọn, địa chỉ đầy đủ "
     "sẽ đọc sau khi chốt. Khi người dùng chọn rõ -> gọi select_candidate(index). "
@@ -243,6 +245,42 @@ _NEXT_CANDIDATES = (
     "lại danh sách NGẮN như trên rồi hỏi lại; TUYỆT ĐỐI KHÔNG gọi resolve_destination "
     "với câu mơ hồ đó."
 )
+
+
+def _label_candidates(locs):
+    """Gán cho mỗi lựa chọn một nhãn NGẮN nhưng KHÁC NHAU, rồi để agent đọc đúng nhãn đó.
+
+    Không thể giao việc này cho LLM tự quyết: khi các cơ sở có địa chỉ trùng nhau, nó
+    đọc ra "một, Xuân Thủy Cầu Giấy; hai, Xuân Thủy Cầu Giấy; ba, Xuân Thủy Cầu Giấy"
+    — người dùng không có cách nào chọn. Nhãn phải được đảm bảo phân biệt bằng code:
+    thử tên đường, rồi phần trong ngoặc của tên (Cơ sở 1/2/3), cuối cùng là khoảng cách.
+    """
+    def street(loc):
+        parts = [p.strip() for p in (loc.get("address") or "").split(",") if p.strip()]
+        return parts[0] if parts else ""
+
+    def paren(loc):
+        m = re.search(r"\(([^)]+)\)", loc.get("name") or "")
+        return m.group(1).strip() if m else ""
+
+    for pick in (street, paren):
+        labels = [pick(l) for l in locs]
+        if all(labels) and len(set(labels)) == len(labels):
+            break
+    else:
+        labels = [""] * len(locs)
+
+    if not (all(labels) and len(set(labels)) == len(labels)):
+        # Vẫn trùng -> phân biệt bằng khoảng cách, thứ luôn khác nhau và người dùng
+        # thật sự cần biết để chọn.
+        labels = [
+            f"cách {l['distanceKm']} ki-lô-mét" if l.get("distanceKm") is not None
+            else f"lựa chọn {i + 1}"
+            for i, l in enumerate(locs)
+        ]
+    for loc, lb in zip(locs, labels):
+        loc["label"] = lb
+    return locs
 
 
 def _do_resolve(query, pk):
@@ -260,8 +298,9 @@ def _do_resolve(query, pk):
 
     locs = r["locations"]
     if len(locs) >= 2:                       # several campuses/branches -> let user pick
-        merged = [{"name": l["name"], "address": l.get("address"),
-                   "lat": l["lat"], "lng": l["lng"], "verified": l.get("verified")} for l in locs[:4]]
+        locs = _label_candidates(locs[:4])
+        merged = [{"name": l["name"], "address": l.get("address"), "label": l.get("label"),
+                   "lat": l["lat"], "lng": l["lng"], "verified": l.get("verified")} for l in locs]
         return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
 
     loc = locs[0]
