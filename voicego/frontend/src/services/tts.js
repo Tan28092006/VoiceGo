@@ -13,6 +13,13 @@ function audioEl() {
   return el;
 }
 
+/** Loa có đang phát tiếng AI ngay lúc này không. Bộ nhận giọng dùng để NÂNG ngưỡng
+ *  trong lúc đọc, vì mic hứng lại tiếng của chính AI (nhất là máy tính dùng loa
+ *  ngoài) và tiếng đó cũng là giọng nói liên tục nên không thể lọc bằng thời lượng. */
+export function isSpeaking() {
+  return !!el && !el.paused && !el.ended;
+}
+
 // Call from a user gesture (login / tap) to unlock audio + speech on mobile.
 export function unlockAudio() {
   try { initSharedAudioContext(); } catch (e) {} // Unlock mic context for mobile barge-in

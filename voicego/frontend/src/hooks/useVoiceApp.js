@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import * as api from '../services/api';
-import { speak, stop as stopSpeech, unlockAudio } from '../services/tts';
+import { speak, stop as stopSpeech, unlockAudio, isSpeaking } from '../services/tts';
 import VoiceRecorder from '../services/voiceRecorder';
 import { connectSocket, emitPassengerWaiting, disconnectSocket } from '../services/socket';
 import { startBeacon, stopBeacon, setBeaconIntensity } from '../services/beacon';
@@ -165,6 +165,9 @@ export default function useVoiceApp() {
         // Không nghe được gì thì bỏ cuộc sau 9s rồi mở lại. Trước để 20s: mỗi lần
         // trượt là màn hình đứng im 20 giây nên nhìn như treo hẳn.
         noSpeechMs: 9000,
+        // Cho bộ nhận giọng biết AI có đang đọc hay không -> nó tự nâng ngưỡng lúc
+        // đó, khỏi nghe lại tiếng của chính mình rồi tự cắt lời.
+        isTtsPlaying: isSpeaking,
         // Đèn báo mic đang nghe thấy giọng -> nút mic đổi trạng thái + hiện chữ
         // "Đang nghe bạn nói…". Nhìn thấy được nên biết ngay VAD có ăn hay không.
         onVoice: (active) => {

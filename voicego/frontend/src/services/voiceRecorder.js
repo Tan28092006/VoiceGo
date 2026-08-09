@@ -59,7 +59,12 @@ export default class VoiceRecorder {
         const num = (k, d) => (Number(q.get(k)) > 0 ? Number(q.get(k)) : d);
         // Sàn tuyệt đối: dù nền có thấp cỡ nào cũng không nhận dưới mức này.
         this.speechThreshold = opts.speechThreshold || num('vadmin', 0.006);
-        this.floorMult = opts.floorMult || num('vadmult', 3.5);   // vượt nền mấy lần mới tính
+        this.floorMult = opts.floorMult || num('vadmult', 4.5);   // vượt nền mấy lần mới tính
+        // Trong lúc AI ĐANG ĐỌC, nhân thêm hệ số này vào ngưỡng: mic hứng lại tiếng
+        // của chính AI (rõ nhất khi dùng loa ngoài), mà đó cũng là giọng nói liên tục
+        // nên không lọc được bằng thời lượng — chỉ có cách đòi to hơn hẳn.
+        this.ttsGuardMult = opts.ttsGuardMult || num('vadtts', 1.9);
+        this.isTtsPlaying = opts.isTtsPlaying || null;
         // Số khung LIÊN TIẾP phải đủ to mới coi là đang nói (~85ms/khung). Đây là
         // nút chống-nhiễu quan trọng nhất: ho/cộp/va chạm chỉ kéo 150-250ms nên
         // không thể đạt 7 khung (~600ms), còn một câu nói thì vượt thừa.
@@ -129,8 +134,11 @@ export default class VoiceRecorder {
                     // con số cố định không thể vừa phục vụ mic bị AEC gate (nền ~0.0005)
                     // vừa phục vụ mic rò tiếng TTS từ loa (nền ~0.01 -> tự cắt lời mình).
                     // Ngưỡng phải tính TỪ nền CŨ, trước khi cập nhật nền (xem dưới).
+                    let speaking = false;
+                    if (this.isTtsPlaying) { try { speaking = !!this.isTtsPlaying(); } catch (err) {} }
+                    const guard = speaking ? this.ttsGuardMult : 1;
                     const enterTh = Math.max(this.speechThreshold,
-                        this._floor == null ? 0 : this._floor * this.floorMult);
+                        this._floor == null ? 0 : this._floor * this.floorMult) * guard;
                     // HYSTERESIS: vào thì khó, GIỮ thì dễ. Chỉ có một ngưỡng duy nhất thì
                     // giọng dao động quanh ngưỡng sẽ làm bộ đếm cộng-trừ quanh 0, không
                     // bao giờ đạt đủ khung -> phải chờ hết noSpeechMs rồi mở lại, lặp vô
@@ -174,6 +182,7 @@ export default class VoiceRecorder {
                         debugBadge(`rms ${rms.toFixed(4)} | PEAK ${(this._peak || 0).toFixed(4)}`
                             + ` | floor ${(this._floor || 0).toFixed(4)} | th ${threshold.toFixed(4)}`
                             + ` | ${this._hits || 0}/${this.speechFrames}`
+                            + `${speaking ? ' | TTS x' + this.ttsGuardMult : ''}`
                             + ` | ${this._speechStarted ? 'SPEAK' : (warming ? 'warm' : 'idle')}`);
                     }
 
