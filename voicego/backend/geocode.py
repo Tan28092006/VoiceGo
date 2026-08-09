@@ -400,9 +400,20 @@ def _build_prompt(text, user_lat, user_lng, grounded):
         "giúp một cơ sở rồi bỏ các cơ sở còn lại — người dùng phải được tự chọn.\n"
         "name: Trả về tên CHÍNH THỨC và CHUẨN XÁC NHẤT (VD: 'lăng bác' -> 'Lăng Chủ tịch Hồ Chí Minh'). Rất quan trọng để tìm kiếm bản đồ.\n"
         "full_address ngắn: số nhà + đường + phường/quận (không quốc gia, không mã bưu chính).\n"
+        # Toạ độ số của model hay lệch vài km, nên toạ độ thật lấy từ OpenStreetMap.
+        # Nhưng OSM chỉ tìm ra khi tên được viết đúng kiểu của nó — đo trên dữ liệu thật:
+        #   'Đại học Công nghiệp Hà Nội cơ sở 2'         -> đúng cơ sở
+        #   'Đại học Công nghiệp Hà Nội (Cơ sở 2)'       -> TRƯỢT (dấu ngoặc)
+        #   'Trường Đại học Công nghiệp Hà Nội Cơ sở 2'  -> TRƯỢT (tiền tố)
+        # Nên bắt model tự chuẩn hoá luôn, thay vì cắt gọt bằng regex ở phía sau.
+        "map_query: tên để TRA BẢN ĐỒ OpenStreetMap. Viết đúng cách OSM đặt tên: "
+        "bỏ tiền tố loại hình ('Trường', 'Công ty', 'Trung tâm'), KHÔNG dấu ngoặc, "
+        "GIỮ phần chi nhánh dạng chữ thường ('cơ sở 2'), KHÔNG kèm số nhà/phường/quận. "
+        "Vd 'Trường Đại học Công nghiệp Hà Nội (Cơ sở 2)' -> 'Đại học Công nghiệp Hà Nội cơ sở 2'.\n"
         "Toạ độ DMS tới 0.1 giây, đặt pin ĐÚNG địa điểm (vd 10°47'09.1\"N, 106°42'09.8\"E).\n"
         "CHỈ trả JSON, không giải thích:\n"
-        '{"query_type":"poi|address","locations":[{"name":"","full_address":"","lat_dms":"","lng_dms":""}]}'
+        '{"query_type":"poi|address","locations":[{"name":"","map_query":"","full_address":"",'
+        '"lat_dms":"","lng_dms":""}]}'
     )
 
 
@@ -427,11 +438,13 @@ def _gemini_locations(text, user_lat, user_lng):
                 continue
         name = item.get("name") or text
         out.append({"name": name, "address": _short_address(item.get("full_address") or name, name),
+                    # Tên đã chuẩn hoá cho OSM, do chính model trả về (xem _build_prompt).
+                    "map_query": (item.get("map_query") or "").strip(),
                     "lat": lat, "lng": lng})
     return {"query_type": data.get("query_type", "poi"), "locations": out}
 
 
-def _poi_queries(name):
+def _poi_queries(name, map_query=""):
     """Các dạng tên để tra Nominatim, xếp theo thứ tự ĐO ĐƯỢC là tốt nhất.
 
     OSM ghi hẳn chi nhánh vào tên POI — "Đại học Công nghiệp Hà Nội (cơ sở 2)" — nên
@@ -457,7 +470,9 @@ def _poi_queries(name):
         return re.sub(r"\s*\([^)]*\)", "", s).strip()
     # Thứ tự = thứ tự ĐO ĐƯỢC là tốt dần xuống, và không dạng nào bị mất: nếu dạng
     # trước trượt thì thử dạng sau, nên địa điểm nào cần giữ "Trường" vẫn ra kết quả.
-    variants = [_plain(nopre), _bare(nopre), _plain(raw), _bare(raw), raw]
+    # map_query do model tự chuẩn hoá đứng ĐẦU — sửa ở gốc tốt hơn cắt gọt bằng regex;
+    # mấy biến thể regol phía sau chỉ còn là lưới đỡ khi model không trả trường đó.
+    variants = [(map_query or "").strip(), _plain(nopre), _bare(nopre), _plain(raw), _bare(raw), raw]
     return list(dict.fromkeys([v for v in variants if v]))[:4]
 
 
@@ -509,7 +524,7 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     ref = None
     # POI: thử lần lượt các dạng tên (giữ "cơ sở N", bỏ ngoặc/tiền tố) — xem _poi_queries.
     # Địa chỉ số nhà: tra thẳng địa chỉ trước.
-    tries = [primary] if is_address else _poi_queries(name)
+    tries = [primary] if is_address else _poi_queries(name, loc.get("map_query"))
     nm = None
     for q in tries:
         if not q.strip():
