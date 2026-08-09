@@ -86,12 +86,13 @@ SYSTEM_PROMPT = (
     "nhưng KHÔNG lan man — người khiếm thị phải ngồi nghe hết, và câu càng dài thì càng "
     "lâu mới ra tiếng.\n"
     "Cách nói vừa đủ:\n"
-    "- Địa chỉ: TÊN + ĐƯỜNG (hoặc quận). BỎ số nhà, phường, 'Thành phố Hồ Chí Minh', "
-    "'Việt Nam'. Vd 'Đại học Công nghiệp Hà Nội ở Cầu Diễn' — KHÔNG đọc 'số 298 đường "
-    "Cầu Diễn, phường Minh Khai, quận Bắc Từ Liêm'.\n"
-    "- Nhiều cơ sở: nêu tên địa điểm MỘT lần rồi liệt kê theo label. Vd 'Đại học Công "
-    "nghiệp Hà Nội có 3 cơ sở: một, Cầu Diễn; hai, Tây Tựu; ba, Phủ Lý. Bạn muốn đến cơ "
-    "sở số mấy?'\n"
+    "- Địa chỉ: đọc TÊN + ĐƯỜNG + QUẬN/HUYỆN (và tỉnh/thành nếu khác nơi người dùng "
+    "đang đứng) — đủ để người khiếm thị nhận ra đó là chỗ nào. Chỉ BỎ 'Việt Nam' và mã "
+    "bưu chính. Vd 'Đại học Công nghiệp Hà Nội, 298 Cầu Diễn, Bắc Từ Liêm'.\n"
+    "- Nhiều cơ sở: nêu tên địa điểm MỘT lần rồi liệt kê theo label, ĐỌC ĐỦ label — "
+    "nghe 'Phủ Lý' không thôi thì không biết đó là tỉnh khác. Vd 'Đại học Công nghiệp "
+    "Hà Nội có 3 cơ sở: một, 298 Cầu Diễn, Bắc Từ Liêm; hai, Tây Tựu, Bắc Từ Liêm; ba, "
+    "Lê Hồng Phong, Phủ Lý, Hà Nam. Bạn muốn đến cơ sở số mấy?'\n"
     "- Báo giá: nói đủ quãng đường + giá + loại xe rồi mới hỏi xác nhận. Vd 'Từ chỗ bạn "
     "tới Chợ Bến Thành khoảng 8 ki-lô-mét, giá 44 nghìn đồng bằng xe máy. Bạn xác nhận "
     "đặt xe nhé?'\n"
@@ -242,7 +243,7 @@ _NEXT_CANDIDATES = (
     "ĐỌC ĐÚNG label đó, KHÔNG tự chọn phần khác của địa chỉ (địa chỉ các cơ sở có thể "
     "trùng nhau, tự chọn sẽ ra 'một, Xuân Thủy; hai, Xuân Thủy; ba, Xuân Thủy' và người "
     "dùng không thể chọn được). BỎ số nhà/phường/thành phố. "
-    "Mẫu: 'Có 3 cơ sở: một, Cầu Diễn; hai, Tây Tựu; ba, Phủ Lý. Bạn chọn số mấy?' — "
+    "Mẫu: 'Có 3 cơ sở: một, Cầu Diễn, Bắc Từ Liêm; hai, Tây Tựu, Bắc Từ Liêm; ba, Phủ Lý, Hà Nam. Bạn chọn số mấy?' — "
     "Nêu tên địa điểm MỘT lần rồi liệt kê, tổng 2 câu là đủ. Người dùng chỉ cần đủ để chọn, địa chỉ đầy đủ "
     "sẽ đọc sau khi chốt. Khi người dùng chọn rõ -> gọi select_candidate(index). "
     "Nếu trả lời KHÔNG rõ chọn mục nào (vd 'hai cơ sở', 'cái nào', 'không biết') -> đọc "
@@ -259,9 +260,13 @@ def _label_candidates(locs):
     — người dùng không có cách nào chọn. Nhãn phải được đảm bảo phân biệt bằng code:
     thử tên đường, rồi phần trong ngoặc của tên (Cơ sở 1/2/3), cuối cùng là khoảng cách.
     """
+    def parts(loc):
+        return [p.strip() for p in (loc.get("address") or "").split(",") if p.strip()]
+
     def street(loc):
-        parts = [p.strip() for p in (loc.get("address") or "").split(",") if p.strip()]
-        return parts[0] if parts else ""
+        # ĐƯỜNG + PHƯỜNG/QUẬN, không chỉ một từ: nghe "Phủ Lý" thì không biết đó là
+        # tỉnh khác, phải nghe "Phủ Lý, Hà Nam" mới nhận ra được.
+        return ", ".join(parts(loc)[:2])
 
     def paren(loc):
         m = re.search(r"\(([^)]+)\)", loc.get("name") or "")
@@ -273,6 +278,13 @@ def _label_candidates(locs):
             break
     else:
         labels = [""] * len(locs)
+
+    # Tỉnh/thành khác nhau là thông tin QUAN TRỌNG NHẤT để chọn (một cơ sở ở Hà Nội,
+    # một ở Hà Nam) — luôn ghép vào nhãn khi chúng không giống nhau.
+    tails = [(parts(l) or [""])[-1] for l in locs]
+    if len(set(tails)) > 1 and all(labels):
+        labels = [lb if (t and t in lb) or not t else f"{lb}, {t}"
+                  for lb, t in zip(labels, tails)]
 
     if not (all(labels) and len(set(labels)) == len(labels)):
         # Vẫn trùng -> phân biệt bằng khoảng cách, thứ luôn khác nhau và người dùng
