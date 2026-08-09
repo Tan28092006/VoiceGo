@@ -469,8 +469,15 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     # Address: tra ĐỊA CHỈ trước (số nhà + đường chính xác hơn).
     name = loc.get("name") or ""
     addr = loc.get("address") or ""
-    primary = addr if is_address else name
-    fallback = name if is_address else addr
+    # Bỏ phần trong ngoặc khi TRA CỨU: "(Cơ sở 1)" là do Gemini tự thêm để phân biệt,
+    # OSM không có chuỗi đó nên Nominatim khớp mờ rồi rơi ra chỗ khác hẳn (đã thấy pin
+    # nhảy sang Phố Hàm Nghi). Vẫn giữ nguyên tên đầy đủ để hiển thị/đọc.
+    q_name = re.sub(r"\s*\([^)]*\)", "", name).strip()
+    # Neo tên POI vào quận/thành phố lấy từ địa chỉ — "Đại học Công nghiệp Hà Nội" một
+    # mình quá chung, kèm "Bắc Từ Liêm, Hà Nội" thì Nominatim mới tìm đúng nhánh.
+    tail = ", ".join([p.strip() for p in addr.split(",") if p.strip()][-2:])
+    primary = addr if is_address else (f"{q_name}, {tail}" if tail else q_name)
+    fallback = q_name if is_address else addr
 
     # Nominatim trước (đo trên 8 địa điểm VN: thắng Mapbox 7-1 và không bao giờ
     # trả rỗng), nhưng thỉnh thoảng lệch THẢM HOẠ — "THPT Lê Hồng Phong" ra tận
@@ -493,8 +500,23 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
 
     if not ref:
         return loc, False                          # không có gì để đối chiếu
-    if g and not is_address and _haversine_km(g[0], g[1], ref["lat"], ref["lng"]) <= VERIFY_RADIUS_KM:
-        return loc, True                           # POI khớp -> giữ pin của Gemini
+
+    if g:
+        gap = _haversine_km(g[0], g[1], ref["lat"], ref["lng"])
+        if gap <= VERIFY_RADIUS_KM:
+            # Hai nguồn khớp nhau -> tin. POI thì giữ pin Gemini (nó ghim đúng toà nhà,
+            # geocoder hay rơi ra giữa đường); địa chỉ số nhà thì lấy geocoder.
+            return (loc, True) if not is_address else (
+                {"name": loc["name"], "address": loc.get("address") or ref.get("address"),
+                 "lat": ref["lat"], "lng": ref["lng"]}, True)
+        # LỆCH QUÁ XA -> KHÔNG BIẾT chỗ nào đúng. Trước đây vẫn lấy toạ độ geocoder rồi
+        # đánh verified=True: đó chính là lúc pin nhảy sang một con phố không liên quan.
+        # Giữ toạ độ Gemini (nó khớp với chuỗi địa chỉ đang đọc cho người dùng) và hạ cờ
+        # verified để tầng trên biết là chưa chắc.
+        print(f"[pin] lech {gap:.1f}km giua Gemini va geocoder cho '{name[:40]}' -> giu Gemini, verified=False")
+        return loc, False
+
+    # Gemini không cho toạ độ nào -> đành dùng geocoder.
     return {"name": loc["name"], "address": loc.get("address") or ref.get("address"),
             "lat": ref["lat"], "lng": ref["lng"]}, True
 
