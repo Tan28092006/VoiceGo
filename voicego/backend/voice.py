@@ -274,28 +274,46 @@ def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes |
     return None
 
 
+async def edge_tts_stream(segment: str, rate: str):
+    """Yield từng chunk mp3 của MỘT mẩu văn bản qua Edge TTS."""
+    import edge_tts
+    async for chunk in edge_tts.Communicate(segment, EDGE_VOICE, rate=rate).stream():
+        if chunk["type"] == "audio":
+            yield chunk["data"]
+
+
 async def stream_text_to_speech(text: str, voice: str = "banmai", speed: str = ""):
     """
     Hỗ trợ streaming âm thanh trực tiếp (nhanh hơn rất nhiều).
     Vì FPT không hỗ trợ streaming từng chunk qua HTTP, ta sẽ dùng Edge TTS cho streaming
     để đạt độ trễ thấp nhất. Nếu có lỗi, fallback sang block download của FPT.
     """
+    import asyncio
+
+    s = str(speed).strip()
+    rate = f"{int(s):+d}%" if s.lstrip("+-").isdigit() else "+0%"
+
+    # MỘT lần gọi cho cả đoạn. Đã thử cắt theo câu để ra tiếng sớm hơn nhưng đo lại
+    # thì tệ hơn: byte đầu chỉ nhanh ~80ms trong khi TỔNG thời gian gấp 3 lần
+    # (1 lần gọi 885-1123ms so với cắt câu 2688-3190ms), vì mỗi mẩu phải mở một
+    # WebSocket riêng tới Edge. Độ trễ ở đây do BẮT TAY KẾT NỐI, không do độ dài chữ:
+    # kết nối ấm thì đoạn 304 ký tự vẫn ra tiếng sau ~500ms.
+    spoke = False
     try:
-        import edge_tts
-        s = str(speed).strip()
-        rate = f"{int(s):+d}%" if s.lstrip("+-").isdigit() else "+0%"
-        async for chunk in edge_tts.Communicate(text, EDGE_VOICE, rate=rate).stream():
-            if chunk["type"] == "audio":
-                yield chunk["data"]
-    except Exception:
-        # Fallback về FPT nếu Edge lỗi (chạy trong thread để không block event loop)
-        import asyncio
+        async for chunk in edge_tts_stream(text, rate):
+            spoke = True
+            yield chunk
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Chỉ gọi FPT khi Edge KHÔNG ra byte nào — tránh đọc chồng hai giọng nếu Edge
+    # đứt giữa đường. Và nếu cả hai đều tịt thì response sẽ rỗng: HTTP vẫn 200 nên
+    # trình duyệt chỉ thấy "audio hỏng", vì vậy client phải tự đọc bù (xem tts.js).
+    if not spoke:
         audio = await asyncio.to_thread(_fpt_tts, text, voice, speed)
         if audio:
-            # Chunking the bytes so it streams properly
-            chunk_size = 8192
-            for i in range(0, len(audio), chunk_size):
-                yield audio[i:i+chunk_size]
+            for i in range(0, len(audio), 8192):
+                yield audio[i:i + 8192]
 
 
 def stream_agent_narration(booking: dict):

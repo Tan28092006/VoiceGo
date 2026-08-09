@@ -55,19 +55,30 @@ export async function speak(text, opts = {}) {
   return new Promise((resolve) => {
     if (my !== genToken) { resolve(); return; }
     let settled = false;
+    let started = false;      // loa đã ra tiếng cho lượt này chưa
     const done = () => { if (!settled) { settled = true; resolve(); } };
     // Không đọc được bằng file thì phải đọc bằng giọng trình duyệt, KHÔNG được coi
     // như đã đọc xong: bản trước nuốt lỗi play() rồi resolve luôn, nên lỗi biểu hiện
     // ra ngoài đúng kiểu "im lặng, không báo gì".
     const fallback = (why) => {
       if (settled || my !== genToken) return;
-      console.warn('[TTS] phat file that bai ->', why, '| doc bang giong trinh duyet');
+      // Nếu loa ĐÃ ra tiếng rồi thì đây là stream đứt giữa đường (câu dài -> stream
+      // dài -> dễ đứt). Đọc lại từ đầu bằng giọng trình duyệt là tệ hơn: người dùng
+      // nghe câu đó hai lần, lần sau bằng giọng máy đọc tiếng Việt sai bét. Chỉ đọc
+      // bù khi CHƯA hề ra tiếng.
+      if (started) {
+        console.warn('[TTS] stream dut giua duong ->', why, '| da doc duoc phan dau, KHONG doc lai');
+        done();
+        return;
+      }
+      console.warn('[TTS] khong ra tieng ->', why, '| doc bang giong trinh duyet');
       settled = true;
       browserSpeak(text).then(resolve);
     };
 
     a.onplaying = () => {
       if (my !== genToken) return;          // đã bị speak() mới thay thế
+      started = true;
       try { opts.onStart?.(); } catch (e) {}
     };
     a.onended = done;
