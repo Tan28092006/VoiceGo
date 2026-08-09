@@ -17,6 +17,7 @@ import re
 import json
 import time
 import math
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -234,6 +235,24 @@ def _parse_json(raw):
         return None
 
 
+_NOMINATIM_LOCK = threading.Lock()
+_nominatim_last = 0.0
+
+
+def _nominatim_throttle():
+    """Giãn các lần gọi Nominatim ra ≥1.1 giây — đúng chính sách của máy chủ công cộng.
+
+    Đặt ở đây thay vì rải sleep() ở chỗ gọi, để MỌI đường dẫn tới Nominatim đều được
+    bảo vệ; nhờ vậy mới ghim được toàn bộ danh sách lựa chọn mà không bị chặn IP.
+    """
+    global _nominatim_last
+    with _NOMINATIM_LOCK:
+        wait = 1.1 - (time.time() - _nominatim_last)
+        if wait > 0:
+            time.sleep(wait)
+        _nominatim_last = time.time()
+
+
 def _nominatim_full(address, center_lat=None, center_lng=None):
     """Return (lat, lng, display_name) for an address/POI, or None. When a center
     is given, viewbox BIASES toward the pickup area (no bounded=1, so an out-of-
@@ -242,6 +261,7 @@ def _nominatim_full(address, center_lat=None, center_lng=None):
     vb = _viewbox(center_lat, center_lng)
     if vb:
         params["viewbox"] = vb
+    _nominatim_throttle()
     try:
         r = requests.get(
             NOMINATIM_URL,
@@ -304,6 +324,7 @@ def geocode_candidates(text, user_lat=None, user_lng=None, limit=8):
     vb = _viewbox(center_lat, center_lng)
     if vb:
         params["viewbox"] = vb
+    _nominatim_throttle()
     try:
         r = requests.get(
             NOMINATIM_URL,
@@ -410,7 +431,7 @@ def _gemini_locations(text, user_lat, user_lng):
     return {"query_type": data.get("query_type", "poi"), "locations": out}
 
 
-def _pin(loc, center_lat, center_lng, is_address=False, pickup=None):
+def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=False):
     """Chốt toạ độ để ghim lên bản đồ. Trả (loc, verified).
 
     Nguyên tắc: **Gemini quyết định ĐÓ LÀ CHỖ NÀO, geocoder thật quyết định NÓ
@@ -457,7 +478,10 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None):
     # xuống Mapbox chứ không ghim bừa.
     ref = None
     nm = _nominatim_full(primary, center_lat, center_lng) if primary.strip() else None
-    if not nm and fallback.strip() and fallback != primary:
+    # one_shot: khi ghim CẢ danh sách, mỗi lựa chọn chỉ được tra Nominatim MỘT lần.
+    # Nominatim buộc giãn 1.1s/lần nên lần tra thứ hai làm tổng thời gian phình gấp
+    # đôi (đo được 16.4s cho 3 lựa chọn) — không đáng, vì lần tra đầu đã đủ tốt.
+    if not nm and not one_shot and fallback.strip() and fallback != primary:
         nm = _nominatim_full(fallback, center_lat, center_lng)
     if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
         ref = {"name": loc["name"], "address": addr or nm[2],
@@ -546,13 +570,21 @@ def resolve_locations(text, user_lat=None, user_lng=None):
         is_addr = data.get("query_type") == "address"
         pickup = (user_lat, user_lng) if user_lat is not None else None
 
-        # NHIỀU cơ sở -> trả ngay để người dùng chọn, CHƯA chốt toạ độ. Việc chốt
-        # để dành cho cái được chọn (agent gọi verify_location). Lý do không đối
-        # chiếu cả 4: Nominatim công cộng giới hạn ~1 req/giây, bắn 4 phát song
-        # song là vi phạm và dễ bị chặn — mà 3 cái kia thường bị bỏ đi.
+        # NHIỀU cơ sở -> CHỐT TOẠ ĐỘ CHO TẤT CẢ trước khi trả về. Không có "pin tạm":
+        # pin hiện trên bản đồ phải đúng ngay từ đầu, và đã chốt sẵn thì lúc người dùng
+        # chọn xong khỏi phải tra lại. Nominatim giới hạn ~1 req/giây nên phải làm lần
+        # lượt (_nominatim_throttle lo việc giãn nhịp) — 3 chỗ mất ~3 giây, đổi lại
+        # không còn toạ độ nào là phỏng đoán.
         if len(locs) >= 2:
+            # Ghim SONG SONG. Bộ điều tiết vẫn xếp hàng các lần gọi Nominatim đúng
+            # 1 req/giây (nên vẫn tuân thủ), nhưng phần còn lại — Mapbox dự phòng,
+            # thời gian chờ mạng — thì chồng lên nhau thay vì cộng dồn.
+            with ThreadPoolExecutor(max_workers=min(4, len(locs))) as pool:
+                futs = [pool.submit(_pin, l, center_lat, center_lng, is_addr, pickup, True)
+                        for l in locs]
+                pinned = [fin(loc, ok) for loc, ok in (f.result() for f in futs)]
             return {"ok": True, "query_type": data.get("query_type", "poi"),
-                    "source": "grounded", "locations": [fin(l, False) for l in locs]}
+                    "source": "grounded", "locations": pinned}
 
         # Chỉ MỘT nơi -> đó chính là điểm đến, chốt toạ độ luôn.
         loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)
