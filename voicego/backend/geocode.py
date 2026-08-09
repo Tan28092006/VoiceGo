@@ -167,14 +167,19 @@ def _gemini_call(prompt, grounded, retries=2):
     # Đo thực tế trên chính prompt này: 16s -> 3.2s, grounding vẫn chạy thật
     # (groundingMetadata còn nguyên) và toạ độ vẫn khớp thực địa. Đây là khoản
     # tiết kiệm lớn nhất của cả luồng — tra địa điểm là tra cứu, không cần suy luận.
-    kw = {"thinking_config": types.ThinkingConfig(thinking_budget=0)}
+    # temperature=0: cùng một câu hỏi phải ra cùng một danh sách. Mặc định của Gemini là
+    # 1.0 nên hai lượt hỏi y hệt có thể liệt kê cơ sở khác nhau (đo thật: cơ sở 3 lúc ra
+    # 'Phủ Lý, Hà Nam', lúc ra 'Dương Nội, Hà Đông') — người dùng nghe hai lần thấy lệch
+    # nhau thì mất tin. Tra địa điểm là tra cứu, không cần sáng tạo.
+    kw = {"thinking_config": types.ThinkingConfig(thinking_budget=0), "temperature": 0}
     if grounded:
         kw["tools"] = [types.Tool(google_search=types.GoogleSearch())]
     try:
         cfg = types.GenerateContentConfig(**kw)
     except TypeError:
         # SDK cũ chưa có thinking_config -> chạy như trước, chỉ mất phần tăng tốc.
-        cfg = (types.GenerateContentConfig(tools=kw["tools"]) if grounded else None)
+        cfg = (types.GenerateContentConfig(tools=kw["tools"], temperature=0) if grounded
+               else types.GenerateContentConfig(temperature=0))
 
     global _gemini_rr
     now = time.time()
@@ -554,6 +559,30 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
             "lat": ref["lat"], "lng": ref["lng"]}, True
 
 
+def geocode_query(query, user_lat=None, user_lng=None):
+    """Tra MỘT chuỗi qua geocoder THẬT (Nominatim rồi Mapbox). Không dùng LLM ở đây.
+
+    Tách riêng thành hàm để AGENT tự quyết định chuỗi tra: nó nhận danh sách địa điểm
+    do Gemini tìm được, rồi tự soạn chuỗi theo kiểu OSM đặt tên. Trước đây backend tự
+    ghim bằng tên thô của Gemini nên agent không chen vào được.
+    """
+    q = (query or "").strip()
+    if not q:
+        return None
+    center_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
+    center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
+    nm = _nominatim_full(q, center_lat, center_lng)
+    if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
+        return {"name": q, "address": _short_address(nm[2], q), "lat": nm[0], "lng": nm[1],
+                "verified": True, "source": "nominatim", "resolved": nm[2]}
+    mb = _mapbox_first(q, center_lat, center_lng)
+    if mb and _within_service(mb["lat"], mb["lng"], center_lat, center_lng):
+        return {"name": mb.get("name") or q, "address": _short_address(mb.get("address"), q),
+                "lat": mb["lat"], "lng": mb["lng"], "verified": True, "source": "mapbox",
+                "resolved": mb.get("address") or ""}
+    return None
+
+
 def verify_location(loc, user_lat=None, user_lng=None, is_address=False):
     """Chốt toạ độ cho MỘT địa điểm — gọi khi người dùng đã chọn xong candidate.
 
@@ -571,7 +600,7 @@ def verify_location(loc, user_lat=None, user_lng=None, is_address=False):
     return out
 
 
-def resolve_locations(text, user_lat=None, user_lng=None):
+def resolve_locations(text, user_lat=None, user_lng=None, pin=True):
     """Giải mã một địa điểm nói ra thành 1..N vị trí thật (chi nhánh/cơ sở).
 
     Gemini (grounded) là bộ não chính — nó xử được địa điểm bất kỳ, không hardcode.
@@ -593,7 +622,9 @@ def resolve_locations(text, user_lat=None, user_lng=None):
         else:
             d = None
         return {"name": loc["name"], "address": _short_address(loc.get("address"), loc["name"]),
-                "lat": loc.get("lat"), "lng": loc.get("lng"), "distanceKm": d, "verified": verified}
+                "lat": loc.get("lat"), "lng": loc.get("lng"), "distanceKm": d, "verified": verified,
+                # tên đã chuẩn hoá kiểu OSM — chuyển tiếp lên agent để nó soạn chuỗi tra
+                "map_query": loc.get("map_query") or ""}
 
     def within(loc):
         if loc.get("lat") is None or loc.get("lng") is None:
@@ -630,6 +661,11 @@ def resolve_locations(text, user_lat=None, user_lng=None):
         # chọn xong khỏi phải tra lại. Nominatim giới hạn ~1 req/giây nên phải làm lần
         # lượt (_nominatim_throttle lo việc giãn nhịp) — 3 chỗ mất ~3 giây, đổi lại
         # không còn toạ độ nào là phỏng đoán.
+        if len(locs) >= 2 and not pin:
+            # pin=False: chỉ trả danh sách Gemini tìm được, KHÔNG tự ghim. Agent sẽ tự
+            # gọi geocode qua tool riêng với chuỗi nó soạn (xem pin_location trong agent).
+            return {"ok": True, "query_type": data.get("query_type", "poi"),
+                    "source": "grounded", "locations": [fin(l, False) for l in locs]}
         if len(locs) >= 2:
             # Ghim SONG SONG. Bộ điều tiết vẫn xếp hàng các lần gọi Nominatim đúng
             # 1 req/giây (nên vẫn tuân thủ), nhưng phần còn lại — Mapbox dự phòng,

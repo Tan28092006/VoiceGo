@@ -18,7 +18,8 @@ import time
 import unicodedata
 
 from voice import llm_client, LLM_MODEL
-from geocode import resolve_locations, verify_location, _nominatim, _haversine_km
+from geocode import (resolve_locations, verify_location, geocode_query,
+                     _nominatim, _haversine_km)
 from places_db import lookup_all as _lookup_all
 from routing import road_route
 from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request, find_gate_group
@@ -27,6 +28,17 @@ MAX_ALT_KM = 80  # drop same-name places too far away (e.g. another province)
 
 # Fallback pickup when the rider's GPS is unavailable (Trường Đại học Quốc tế).
 # Real bookings use the GPS coords the client sends with each turn.
+# Toạ độ bộ tra bản đồ trả về mà cách toạ độ Gemini ước lượng xa hơn mức này thì coi như
+# tra trượt sang nơi khác, không phải sai số. Nới rộng hơn sai số thật của Gemini (~2.5km).
+PIN_SANITY_KM = 5.0
+
+# Ghi chú kỹ thuật trả kèm cho agent. Phải nói rõ là nội bộ: có lượt nó đọc thẳng
+# "hệ thống vẫn báo cảnh báo nhưng toạ độ đã được chốt, cách 9.6km" ra cho người dùng.
+INTERNAL = (" ĐÂY LÀ GHI CHÚ NỘI BỘ, KHÔNG PHẢI NỘI DUNG ĐỂ ĐỌC. Câu nói ra phải BẮT ĐẦU "
+            "NGAY bằng nội dung dành cho người dùng, KHÔNG mở đầu bằng việc mình vừa làm "
+            "('đã chốt toạ độ', 'giờ tôi đọc danh sách'...), KHÔNG nhắc toạ độ, cảnh báo, "
+            "ki-lô-mét hay chuyện tra bản đồ.")
+
 DEFAULT_PICKUP = {"name": "Trường Đại học Quốc tế", "lat": 10.8782, "lng": 106.8012}
 PRICE = {"bike": {"base": 12000, "perKm": 4000}, "car": {"base": 29000, "perKm": 12000}}
 
@@ -166,8 +178,28 @@ TOOLS = [
                        "required": ["query"]},
     }},
     {"type": "function", "function": {
+        "name": "pin_location",
+        "description": "Chốt TOẠ ĐỘ THẬT cho MỘT ứng viên trong danh sách candidates, bằng cách tra "
+                       "bản đồ OpenStreetMap với chuỗi DO BẠN SOẠN. Gọi cho TỪNG ứng viên (có thể "
+                       "gọi song song nhiều lần trong cùng một lượt) NGAY sau resolve_destination, "
+                       "TRƯỚC khi đọc danh sách cho người dùng — toạ độ trong candidates lúc đó chỉ "
+                       "là phỏng đoán, chưa được tra bản đồ.",
+        "parameters": {"type": "object",
+                       "properties": {
+                           "index": {"type": "integer", "description": "Số thứ tự ứng viên (bắt đầu từ 1)"},
+                           "query": {"type": "string", "description":
+                               "Chuỗi tra bản đồ do BẠN soạn cho ứng viên đó. Ứng viên có sẵn trường "
+                               "'map_query' đã chuẩn hoá — dùng nó, chỉ sửa nếu bạn thấy sai. "
+                               "Với địa chỉ nhà thì truyền số nhà + tên đường + quận. "
+                               "Với địa điểm có tên riêng: BỎ tiền tố ('Trường', 'Công ty'), "
+                               "KHÔNG dấu ngoặc, GIỮ chi nhánh chữ thường ('cơ sở 2'), "
+                               "KHÔNG kèm số nhà/phường/quận."}},
+                       "required": ["index", "query"]},
+    }},
+    {"type": "function", "function": {
         "name": "select_candidate",
-        "description": "Chọn 1 ứng viên trong danh sách candidates gần nhất theo SỐ THỨ TỰ (1, 2, ...).",
+        "description": "Chốt điểm đến là ứng viên số N sau khi người dùng đã chọn. "
+                       "Nên gọi pin_location cho ứng viên đó TRƯỚC.",
         "parameters": {"type": "object",
                        "properties": {"index": {"type": "integer", "description": "Số thứ tự ứng viên (bắt đầu từ 1)"}},
                        "required": ["index"]},
@@ -257,7 +289,7 @@ _NEXT_CANDIDATES = (
     "gọt sẵn nên số nhà, tên đường, quận, tỉnh trong đó đều là thứ CẦN đọc. "
     "Mẫu: 'Có 3 cơ sở: một, Cầu Diễn, Bắc Từ Liêm; hai, Tây Tựu, Bắc Từ Liêm; ba, Phủ Lý, Hà Nam. Bạn chọn số mấy?' — "
     "Nêu tên địa điểm MỘT lần rồi liệt kê, tổng 2 câu là đủ. Người dùng chỉ cần đủ để chọn, địa chỉ đầy đủ "
-    "sẽ đọc sau khi chốt. Khi người dùng chọn rõ -> gọi select_candidate(index). "
+    "sẽ đọc sau khi chốt. TRƯỚC KHI ĐỌC danh sách: gọi pin_location(index, query) cho TỪNG ứng viên để chốt toạ độ thật (dùng trường 'map_query' của ứng viên làm query). Khi người dùng chọn rõ -> gọi select_candidate(index). "
     "Nếu trả lời KHÔNG rõ chọn mục nào (vd 'hai cơ sở', 'cái nào', 'không biết') -> đọc "
     "lại danh sách NGẮN như trên rồi hỏi lại; TUYỆT ĐỐI KHÔNG gọi resolve_destination "
     "với câu mơ hồ đó."
@@ -315,7 +347,10 @@ def _do_resolve(query, pk):
     """Resolve a spoken place via the Gemini-driven resolver. When it returns MULTIPLE
     locations (a place with several campuses/branches), offer them as a candidate LIST;
     otherwise return the single place. No place is hardcoded — arbitrary places work."""
-    r = resolve_locations(query, pk["lat"], pk["lng"])
+    # pin=False: Gemini CHỈ làm việc của nó — tìm ra các địa điểm liên quan. Việc chốt
+    # toạ độ là của agent: nó tự soạn chuỗi rồi gọi pin_location cho TỪNG chỗ. Trước đây
+    # backend tự nhét tên thô của Gemini vào geocoder, agent không chen vào được.
+    r = resolve_locations(query, pk["lat"], pk["lng"], pin=False)
     if not r.get("ok"):
         reason = r.get("reason", "not_found")
         out = {"ok": False, "kind": "place", "reason": reason}
@@ -328,7 +363,11 @@ def _do_resolve(query, pk):
     if len(locs) >= 2:                       # several campuses/branches -> let user pick
         locs = _label_candidates(locs[:4])
         merged = [{"name": l["name"], "address": l.get("address"), "label": l.get("label"),
-                   "lat": l["lat"], "lng": l["lng"], "verified": l.get("verified")} for l in locs]
+                   "lat": l["lat"], "lng": l["lng"], "verified": l.get("verified"),
+                   "map_query": l.get("map_query"),
+                   # Ước lượng GỐC của Gemini, giữ nguyên cả phiên để làm mốc kiểm tra pin.
+                   # Không dùng lat/lng vì pin_location ghi đè chúng.
+                   "est_lat": l["lat"], "est_lng": l["lng"]} for l in locs]
         return {"ok": True, "kind": "candidates", "candidates": merged, "next": _NEXT_CANDIDATES}
 
     loc = locs[0]
@@ -338,6 +377,74 @@ def _do_resolve(query, pk):
     return {"ok": True, "kind": "place", "name": loc["name"], "address": loc.get("address"),
             "lat": loc["lat"], "lng": loc["lng"],
             "next": "Hỏi người dùng 'xe máy hay ô tô' TRƯỚC khi get_quote."}
+
+
+def _do_pin(msgs, index, query, pk):
+    """Tra chuỗi AGENT soạn qua geocoder thật, rồi gắn toạ độ đó vào ứng viên số `index`.
+
+    Đây là chỗ duy nhất toạ độ hiển thị được sinh ra: agent nhận danh sách Gemini tìm
+    được, tự soạn chuỗi theo kiểu OSM đặt tên, rồi gọi hàm này cho từng chỗ. Toạ độ của
+    Gemini chỉ còn là lưới đỡ khi geocoder không tìm ra gì.
+    """
+    cset = _last_tool(msgs, "candidates")
+    cs = [dict(c) for c in ((cset or {}).get("candidates") or [])]
+    try:
+        i = int(index) - 1
+    except (TypeError, ValueError):
+        i = -1
+    if i < 0 or i >= len(cs):
+        return {"ok": False, "kind": "candidates", "reason": "bad_index"}
+
+    c = cs[i]
+    # Cổng tiếp cận lấy từ DB nên toạ độ đã kiểm chứng — tra lại chỉ làm lệch đi.
+    if "accessible" in c:
+        return {"ok": True, "kind": "candidates", "candidates": cs}
+
+    hit = geocode_query(query, pk["lat"], pk["lng"])
+    if not hit:                                    # chuỗi agent soạn trượt -> thử tên chuẩn hoá
+        alt = c.get("map_query") or c.get("name")
+        if alt and alt.strip() != (query or "").strip():
+            hit = geocode_query(alt, pk["lat"], pk["lng"])
+    if hit:
+        c["lat"], c["lng"] = hit["lat"], hit["lng"]
+        c["verified"] = True
+        if pk.get("lat") is not None:
+            c["distanceKm"] = round(_haversine_km(pk["lat"], pk["lng"], hit["lat"], hit["lng"]), 1)
+    cs[i] = c
+    out = {"ok": True, "kind": "candidates", "candidates": cs,
+           "pinned": bool(hit), "index": i + 1,
+           "next": ("Đã chốt toạ độ. Còn ứng viên nào chưa có verified=true thì gọi pin_location "
+                    "tiếp; xong hết mới đọc danh sách cho người dùng chọn." + INTERNAL)}
+    if not hit:
+        out["next"] = ("Không tra được chuỗi này. Gọi lại pin_location cho ứng viên đó với "
+                       "ĐỊA CHỈ ĐẦY ĐỦ (số nhà, đường, phường, quận) thay vì tên riêng." + INTERNAL)
+        return out
+    # Bộ tra bản đồ LUÔN trả về một kết quả gần nhất, kể cả khi cái tên mình hỏi không
+    # tồn tại (OSM không đánh số cơ sở chính, nên 'cơ sở 1' từng khớp bừa vào 'Ngõ số 1
+    # Xóm Đình' cách 13km). Kết quả sai đó vẫn nằm trong vùng phục vụ nên trông như hợp lệ.
+    #
+    # So bằng CHỮ (địa chỉ trả về vs địa chỉ đã biết) thì quá mong manh: chuỗi Nominatim
+    # có 'Hà Nội' nên khớp bừa với 'Dương Nội', tên vùng 'Đồng bằng...' khớp với 'Hà Đông'.
+    # So bằng TOẠ ĐỘ thì không lừa được: toạ độ Gemini lệch cỡ vài trăm mét đến ~2.5km,
+    # nên cách nhau quá NGƯỠNG này nghĩa là hai bên đang nói về hai nơi khác nhau.
+    # Mốc so sánh là ước lượng GỐC của Gemini (est_*), không phải lat/lng — lat/lng đã bị
+    # chính lần pin này ghi đè, lấy pin sai làm mốc thì lần tra lại nào cũng bị báo lệch.
+    gl, gn = c.get("est_lat"), c.get("est_lng")
+    if gl is not None and gn is not None and not c.get("retried"):
+        off = _haversine_km(gl, gn, hit["lat"], hit["lng"])
+        if off > PIN_SANITY_KM:
+            out["resolved_address"] = hit.get("resolved")
+            out["address_mismatch"] = True
+            out["offsetKm"] = round(off, 1)
+            # Lần tra lại dùng địa chỉ đầy đủ, đáng tin hơn tên riêng -> nhận luôn kết quả
+            # lần đó, khỏi cảnh báo vòng hai rồi lặp mãi không dừng.
+            cs[i] = {**c, "retried": True}
+            out["candidates"] = cs
+            out["next"] = (f"CẢNH BÁO: chuỗi {query!r} tra ra {hit.get('resolved')!r}, cách nơi cần "
+                           f"tìm tới {round(off)} ki-lô-mét -> SAI CHỖ. Gọi lại pin_location cho "
+                           f"đúng ứng viên này, lần này dùng ĐỊA CHỈ ĐẦY ĐỦ của nó "
+                           f"({c.get('address')!r}) làm query." + INTERNAL)
+    return out
 
 
 def _do_select(msgs, index, pk):
@@ -354,8 +461,11 @@ def _do_select(msgs, index, pk):
     # người dùng chọn cho nhanh. Giờ đã biết chọn cái nào -> chốt toạ độ đúng
     # cái đó bằng geocoder thật, để pin trên bản đồ không lệch.
     # Chỉ chốt cho candidate từ Gemini; cổng (gate) đã là toạ độ đã kiểm chứng sẵn.
+    # Bình thường agent đã pin_location cho ứng viên này rồi. Nếu nó bỏ sót thì chốt ở
+    # đây bằng chuỗi đã chuẩn hoá, chứ không để pin sai đi vào đơn xe.
     if p.get("verified") is False:
-        p = verify_location(p, pk["lat"], pk["lng"])
+        hit = geocode_query(p.get("map_query") or p["name"], pk["lat"], pk["lng"])
+        p = {**p, "lat": hit["lat"], "lng": hit["lng"], "verified": True} if hit else             verify_location(p, pk["lat"], pk["lng"])
     # If the picked place has accessible gates AND isn't itself a gate -> offer gates.
     if "accessible" not in p:
         g = _gates_for(p["lat"], p["lng"])
@@ -504,6 +614,9 @@ def run_agent(messages: list[dict], pickup: dict | None = None) -> dict:
             name = tc.function.name
             if name == "resolve_destination":
                 res = _do_resolve(args.get("query", ""), pk)
+                _apply_place_ui(ui, res)
+            elif name == "pin_location":
+                res = _do_pin(msgs, args.get("index"), args.get("query", ""), pk)
                 _apply_place_ui(ui, res)
             elif name == "select_candidate":
                 res = _do_select(msgs, args.get("index"), pk)
