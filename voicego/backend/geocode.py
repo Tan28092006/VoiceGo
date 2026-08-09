@@ -431,6 +431,27 @@ def _gemini_locations(text, user_lat, user_lng):
     return {"query_type": data.get("query_type", "poi"), "locations": out}
 
 
+def _poi_queries(name):
+    """Các dạng tên để tra Nominatim, xếp theo thứ tự ĐO ĐƯỢC là tốt nhất.
+
+    OSM ghi hẳn chi nhánh vào tên POI — "Đại học Công nghiệp Hà Nội (cơ sở 2)" — nên
+    GIỮ phần "cơ sở N" mới ghim đúng cơ sở, bỏ đi thì cả ba cơ sở trỏ về một điểm.
+    Nhưng hai thứ làm Nominatim TRƯỢT HẲN (đo trên chính ca này):
+      "Đại học Công nghiệp Hà Nội cơ sở 2"          -> đúng cơ sở 2, Ngõ 59A Tây Tựu
+      "Đại học Công nghiệp Hà Nội (Cơ sở 2)"        -> MISS   (dấu ngoặc)
+      "Trường Đại học Công nghiệp Hà Nội Cơ sở 2"   -> MISS   (tiền tố "Trường")
+      "Đại học Công nghiệp Hà Nội"                  -> 55 m tới cơ sở 1
+    Cơ sở chính không được OSM đánh số, nên "cơ sở 1" luôn MISS -> phải có dạng tên
+    trần làm phương án hai.
+    """
+    s = re.sub(r"^(Trường|Trung tâm|Công ty|Chi nhánh|Cơ sở)\s+", "", (name or "").strip(),
+               flags=re.IGNORECASE)
+    plain = re.sub(r"\s+", " ", re.sub(r"[()]", " ", s)).strip()   # "(cơ sở 2)" -> "cơ sở 2"
+    bare = re.sub(r"\s*\([^)]*\)", "", s).strip()                  # bỏ hẳn hậu tố chi nhánh
+    queries = [q for q in (plain, bare) if q]
+    return list(dict.fromkeys(queries))       # giữ thứ tự, bỏ trùng
+
+
 def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=False):
     """Chốt toạ độ để ghim lên bản đồ. Trả (loc, verified).
 
@@ -477,7 +498,17 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     # 1120 km. Nên mọi kết quả đều phải nằm trong bán kính phục vụ, sai thì rơi
     # xuống Mapbox chứ không ghim bừa.
     ref = None
-    nm = _nominatim_full(primary, center_lat, center_lng) if primary.strip() else None
+    # POI: thử lần lượt các dạng tên (giữ "cơ sở N", bỏ ngoặc/tiền tố) — xem _poi_queries.
+    # Địa chỉ số nhà: tra thẳng địa chỉ trước.
+    tries = [primary] if is_address else _poi_queries(name)
+    nm = None
+    for q in tries:
+        if not q.strip():
+            continue
+        nm = _nominatim_full(q, center_lat, center_lng)
+        if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
+            break
+        nm = None
     # one_shot: khi ghim CẢ danh sách, mỗi lựa chọn chỉ được tra Nominatim MỘT lần.
     # Nominatim buộc giãn 1.1s/lần nên lần tra thứ hai làm tổng thời gian phình gấp
     # đôi (đo được 16.4s cho 3 lựa chọn) — không đáng, vì lần tra đầu đã đủ tốt.
