@@ -33,29 +33,57 @@ export function unlockAudio() {
  * sẽ lệch mất khoảng đó (dùng để tính lúc nào mới cho phép ngắt lời).
  */
 export async function speak(text, opts = {}) {
-  stop();
-  const my = genToken;
+  // KHÔNG gọi stop() ở đây: stop() làm removeAttribute('src') + load(), rồi mình gán
+  // src mới ngay sau đó -> trình duyệt huỷ play() với AbortError ("interrupted by a
+  // new load request"). Trên máy tính điều này làm câu trả lời im lặng ngẫu nhiên.
+  // Chỉ cần vô hiệu lượt cũ + tạm dừng là đủ.
+  const my = ++genToken;
   if (!text) return;
+  const a = audioEl();
+  try { a.pause(); } catch (e) {}
+  if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch (e) {} }
 
   const url = `${BACKEND_URL}/api/voice/tts_stream?text=${encodeURIComponent(text)}`;
 
   return new Promise((resolve) => {
     if (my !== genToken) { resolve(); return; }
-    const a = audioEl();
-    const done = () => { resolve(); };
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    // Không đọc được bằng file thì phải đọc bằng giọng trình duyệt, KHÔNG được coi
+    // như đã đọc xong: bản trước nuốt lỗi play() rồi resolve luôn, nên lỗi biểu hiện
+    // ra ngoài đúng kiểu "im lặng, không báo gì".
+    const fallback = (why) => {
+      if (settled || my !== genToken) return;
+      console.warn('[TTS] phat file that bai ->', why, '| doc bang giong trinh duyet');
+      settled = true;
+      browserSpeak(text).then(resolve);
+    };
+
     a.onplaying = () => {
       if (my !== genToken) return;          // đã bị speak() mới thay thế
       try { opts.onStart?.(); } catch (e) {}
     };
     a.onended = done;
-    a.onerror = () => {
-      // If streaming fails, fallback to browser TTS
-      browserSpeak(text).then(resolve);
-    };
+    a.onerror = () => fallback('audio error');
     a.muted = false;
     a.src = url;
+
     const pr = a.play();
-    if (pr && pr.catch) pr.catch(() => done());
+    if (pr && pr.catch) {
+      pr.catch((err) => {
+        const name = err && err.name;
+        // AbortError = có lệnh load/pause chen ngang. Thử lại MỘT lần sau một nhịp
+        // thay vì bỏ luôn — đây chính là ca "lúc đọc lúc không".
+        if (name === 'AbortError' && my === genToken) {
+          setTimeout(() => {
+            if (settled || my !== genToken) return;
+            a.play().catch((e2) => fallback(e2 && e2.name));
+          }, 80);
+          return;
+        }
+        fallback(name || 'play() rejected');
+      });
+    }
   });
 }
 
