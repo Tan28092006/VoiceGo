@@ -18,6 +18,7 @@ import json
 import time
 import math
 import threading
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -481,6 +482,32 @@ def _poi_queries(name, map_query=""):
     return list(dict.fromkeys([v for v in variants if v]))[:4]
 
 
+def _norm(s):
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return s.replace("đ", "d")
+
+
+def _name_grounded(name, resolved):
+    """True nếu tên riêng (đã bỏ tiền tố/chi nhánh) THẬT SỰ xuất hiện trong kết quả OSM
+    trả về — vd tìm 'cơ sở 3' ra đúng POI tên 'Đại học Công nghiệp Hà Nội (cơ sở 3)'.
+
+    Khớp tên thật đáng tin hơn địa chỉ Gemini tự đoán: ước lượng có thể bịa, còn ở đây
+    OSM xác nhận ĐÂY ĐÚNG LÀ thực thể mình tìm. Ca thật bắt được: Gemini bảo 'cơ sở 3'
+    ở Lê Trọng Tấn, Dương Nội, Hà Đông (bịa) nhưng Nominatim khớp tên ra đúng campus thật
+    ở Phủ Vân, Phủ Lý (cách Hà Nội 60km, tên trường xuất hiện nguyên trong display_name).
+    Ưu tiên địa chỉ theo tên Gemini tự đoán trong ca đó làm pin đúng mà lời đọc lại sai.
+    """
+    core = re.sub(r"\([^)]*\)", " ", name or "")
+    core = re.sub(r"^(Trường|Trung tâm|Công ty|Chi nhánh)\s+", "", core.strip(), flags=re.IGNORECASE)
+    core_tokens = [t for t in re.split(r"[^\w]+", _norm(core)) if len(t) >= 3]
+    if not core_tokens:
+        return False
+    res_tokens = set(re.split(r"[^\w]+", _norm(resolved or "")))
+    hits = sum(1 for t in core_tokens if t in res_tokens)
+    return hits >= max(2, (len(core_tokens) + 1) // 2)
+
+
 def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=False):
     """Chốt toạ độ để ghim lên bản đồ. Trả (loc, verified).
 
@@ -543,8 +570,14 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     # đôi (đo được 16.4s cho 3 lựa chọn) — không đáng, vì lần tra đầu đã đủ tốt.
     if not nm and not one_shot and fallback.strip() and fallback != primary:
         nm = _nominatim_full(fallback, center_lat, center_lng)
+    # Tên riêng khớp THẬT trong display_name OSM (vd tìm 'cơ sở 3' ra đúng POI tên đó)
+    # -> địa chỉ OSM đáng tin hơn địa chỉ Gemini tự đoán, vì OSM vừa xác nhận đây đúng
+    # là thực thể mình tìm. Không khớp (POI lạ / tra bằng địa chỉ) -> vẫn ưu tiên địa
+    # chỉ Gemini như cũ, vì grounding đọc web có thể cập nhật hơn OSM.
+    grounded = False
     if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
-        ref = {"name": loc["name"], "address": addr or nm[2],
+        grounded = not is_address and _name_grounded(name, nm[2])
+        ref = {"name": loc["name"], "address": nm[2] if grounded else (addr or nm[2]),
                "lat": nm[0], "lng": nm[1]}
     if not ref:
         mb = _mapbox_first(addr or name, center_lat, center_lng)
@@ -555,7 +588,8 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
         return loc, False                          # không có gì để đối chiếu
     if g and not is_address and _haversine_km(g[0], g[1], ref["lat"], ref["lng"]) <= VERIFY_RADIUS_KM:
         return loc, True                           # POI khớp -> giữ pin của Gemini
-    return {"name": loc["name"], "address": loc.get("address") or ref.get("address"),
+    final_addr = ref.get("address") if grounded else (loc.get("address") or ref.get("address"))
+    return {"name": loc["name"], "address": _short_address(final_addr, loc["name"]),
             "lat": ref["lat"], "lng": ref["lng"]}, True
 
 
@@ -600,7 +634,7 @@ def verify_location(loc, user_lat=None, user_lng=None, is_address=False):
     return out
 
 
-def resolve_locations(text, user_lat=None, user_lng=None, pin=True):
+def resolve_locations(text, user_lat=None, user_lng=None):
     """Giải mã một địa điểm nói ra thành 1..N vị trí thật (chi nhánh/cơ sở).
 
     Gemini (grounded) là bộ não chính — nó xử được địa điểm bất kỳ, không hardcode.
@@ -622,9 +656,7 @@ def resolve_locations(text, user_lat=None, user_lng=None, pin=True):
         else:
             d = None
         return {"name": loc["name"], "address": _short_address(loc.get("address"), loc["name"]),
-                "lat": loc.get("lat"), "lng": loc.get("lng"), "distanceKm": d, "verified": verified,
-                # tên đã chuẩn hoá kiểu OSM — chuyển tiếp lên agent để nó soạn chuỗi tra
-                "map_query": loc.get("map_query") or ""}
+                "lat": loc.get("lat"), "lng": loc.get("lng"), "distanceKm": d, "verified": verified}
 
     def within(loc):
         if loc.get("lat") is None or loc.get("lng") is None:
@@ -661,11 +693,6 @@ def resolve_locations(text, user_lat=None, user_lng=None, pin=True):
         # chọn xong khỏi phải tra lại. Nominatim giới hạn ~1 req/giây nên phải làm lần
         # lượt (_nominatim_throttle lo việc giãn nhịp) — 3 chỗ mất ~3 giây, đổi lại
         # không còn toạ độ nào là phỏng đoán.
-        if len(locs) >= 2 and not pin:
-            # pin=False: chỉ trả danh sách Gemini tìm được, KHÔNG tự ghim. Agent sẽ tự
-            # gọi geocode qua tool riêng với chuỗi nó soạn (xem pin_location trong agent).
-            return {"ok": True, "query_type": data.get("query_type", "poi"),
-                    "source": "grounded", "locations": [fin(l, False) for l in locs]}
         if len(locs) >= 2:
             # Ghim SONG SONG. Bộ điều tiết vẫn xếp hàng các lần gọi Nominatim đúng
             # 1 req/giây (nên vẫn tuân thủ), nhưng phần còn lại — Mapbox dự phòng,
@@ -674,6 +701,16 @@ def resolve_locations(text, user_lat=None, user_lng=None, pin=True):
                 futs = [pool.submit(_pin, l, center_lat, center_lng, is_addr, pickup, True)
                         for l in locs]
                 pinned = [fin(loc, ok) for loc, ok in (f.result() for f in futs)]
+            # Gemini đôi lúc lẫn (dù temperature=0, kết quả tìm kiếm web nuôi cho nó vẫn
+            # đổi giữa các lần gọi) và gán nhầm cùng một khu vực cho hai chi nhánh khác
+            # nhau -> hai candidate ghim trùng điểm nhưng vẫn được báo verified=True. Bắt
+            # bằng cách so khoảng cách giữa các candidate với nhau (không cần biết đó là
+            # chỗ nào) — hai chi nhánh thật của cùng một nơi luôn cách nhau > 200m.
+            for i, a in enumerate(pinned):
+                for b in pinned[i + 1:]:
+                    if (a.get("lat") is not None and b.get("lat") is not None and
+                            _haversine_km(a["lat"], a["lng"], b["lat"], b["lng"]) < 0.2):
+                        a["verified"] = b["verified"] = False
             return {"ok": True, "query_type": data.get("query_type", "poi"),
                     "source": "grounded", "locations": pinned}
 
