@@ -18,7 +18,6 @@ import json
 import time
 import math
 import threading
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -482,32 +481,6 @@ def _poi_queries(name, map_query=""):
     return list(dict.fromkeys([v for v in variants if v]))[:4]
 
 
-def _norm(s):
-    s = unicodedata.normalize("NFD", (s or "").lower())
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    return s.replace("đ", "d")
-
-
-def _name_grounded(name, resolved):
-    """True nếu tên riêng (đã bỏ tiền tố/chi nhánh) THẬT SỰ xuất hiện trong kết quả OSM
-    trả về — vd tìm 'cơ sở 3' ra đúng POI tên 'Đại học Công nghiệp Hà Nội (cơ sở 3)'.
-
-    Khớp tên thật đáng tin hơn địa chỉ Gemini tự đoán: ước lượng có thể bịa, còn ở đây
-    OSM xác nhận ĐÂY ĐÚNG LÀ thực thể mình tìm. Ca thật bắt được: Gemini bảo 'cơ sở 3'
-    ở Lê Trọng Tấn, Dương Nội, Hà Đông (bịa) nhưng Nominatim khớp tên ra đúng campus thật
-    ở Phủ Vân, Phủ Lý (cách Hà Nội 60km, tên trường xuất hiện nguyên trong display_name).
-    Ưu tiên địa chỉ theo tên Gemini tự đoán trong ca đó làm pin đúng mà lời đọc lại sai.
-    """
-    core = re.sub(r"\([^)]*\)", " ", name or "")
-    core = re.sub(r"^(Trường|Trung tâm|Công ty|Chi nhánh)\s+", "", core.strip(), flags=re.IGNORECASE)
-    core_tokens = [t for t in re.split(r"[^\w]+", _norm(core)) if len(t) >= 3]
-    if not core_tokens:
-        return False
-    res_tokens = set(re.split(r"[^\w]+", _norm(resolved or "")))
-    hits = sum(1 for t in core_tokens if t in res_tokens)
-    return hits >= max(2, (len(core_tokens) + 1) // 2)
-
-
 def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=False):
     """Chốt toạ độ để ghim lên bản đồ. Trả (loc, verified).
 
@@ -570,29 +543,26 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     # đôi (đo được 16.4s cho 3 lựa chọn) — không đáng, vì lần tra đầu đã đủ tốt.
     if not nm and not one_shot and fallback.strip() and fallback != primary:
         nm = _nominatim_full(fallback, center_lat, center_lng)
-    # Tên riêng khớp THẬT trong display_name OSM (vd tìm 'cơ sở 3' ra đúng POI tên đó)
-    # -> địa chỉ OSM đáng tin hơn địa chỉ Gemini tự đoán, vì OSM vừa xác nhận đây đúng
-    # là thực thể mình tìm. Không khớp (POI lạ / tra bằng địa chỉ) -> vẫn ưu tiên địa
-    # chỉ Gemini như cũ, vì grounding đọc web có thể cập nhật hơn OSM.
-    grounded = False
+    # Địa chỉ ĐỌC luôn lấy theo geocoder thật (Nominatim rồi Mapbox), KHÔNG theo Gemini
+    # tự đoán — Gemini chỉ còn là phương án cuối khi geocoder không cho địa chỉ nào.
+    # Đo được nhiều ca Gemini bịa cả tên phường/quận ('cơ sở 3' đọc ra Hà Đông, rồi lần
+    # khác ra 'Đề Yêm' — không nơi nào có thật trong OSM) trong khi geocoder đã xác nhận
+    # đúng nơi; chưa bắt được ca ngược lại nào (geocoder sai còn Gemini đúng).
     if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
-        grounded = not is_address and _name_grounded(name, nm[2])
-        ref = {"name": loc["name"], "address": nm[2] if grounded else (addr or nm[2]),
-               "lat": nm[0], "lng": nm[1]}
+        ref = {"name": loc["name"], "address": nm[2] or addr, "lat": nm[0], "lng": nm[1]}
     if not ref:
         mb = _mapbox_first(addr or name, center_lat, center_lng)
         if mb and _within_service(mb["lat"], mb["lng"], center_lat, center_lng):
-            # Cùng phép kiểm áp cho nhánh Nominatim ở trên: Mapbox cũng là geocoder
-            # thật, tên khớp thật trong địa chỉ nó trả về cũng đáng tin hơn Gemini đoán.
-            grounded = not is_address and _name_grounded(name, mb.get("address"))
-            ref = {**mb, "address": mb.get("address") if grounded else (addr or mb.get("address"))}
+            ref = {**mb, "address": mb.get("address") or addr}
 
     if not ref:
         return loc, False                          # không có gì để đối chiếu
+    final_addr = _short_address(ref.get("address"), loc["name"])
     if g and not is_address and _haversine_km(g[0], g[1], ref["lat"], ref["lng"]) <= VERIFY_RADIUS_KM:
-        return loc, True                           # POI khớp -> giữ pin của Gemini
-    final_addr = ref.get("address") if grounded else (loc.get("address") or ref.get("address"))
-    return {"name": loc["name"], "address": _short_address(final_addr, loc["name"]),
+        # POI khớp gần -> giữ TOẠ ĐỘ Gemini (đứng đúng building hơn geocoder), nhưng
+        # vẫn đổi ĐỊA CHỈ theo geocoder vì lý do trên.
+        return {"name": loc["name"], "address": final_addr, "lat": g[0], "lng": g[1]}, True
+    return {"name": loc["name"], "address": final_addr,
             "lat": ref["lat"], "lng": ref["lng"]}, True
 
 
@@ -751,12 +721,24 @@ def resolve_locations(text, user_lat=None, user_lng=None):
                 
         if locs:
             locs = locs[:4]
-            
-            # Trả về ngay để người dùng chọn (khoan verify chặt, lat/lng = None)
+
+            # DeepSeek chỉ đoán TÊN (không có Google Search grounding như Gemini), nên
+            # càng phải ghim qua geocoder thật trước khi trả về — không có "pin tạm" ở
+            # nhánh này cũng như nhánh Gemini phía trên. Trước đây trả lat=None thẳng,
+            # vi phạm đúng nguyên tắc pin phải đúng ngay từ đầu.
             if len(locs) >= 2:
+                with ThreadPoolExecutor(max_workers=min(4, len(locs))) as pool:
+                    futs = [pool.submit(_pin, l, center_lat, center_lng, is_addr, pickup, True)
+                            for l in locs]
+                    pinned = [fin(loc, ok) for loc, ok in (f.result() for f in futs)]
+                for i, a in enumerate(pinned):
+                    for b in pinned[i + 1:]:
+                        if (a.get("lat") is not None and b.get("lat") is not None and
+                                _haversine_km(a["lat"], a["lng"], b["lat"], b["lng"]) < 0.2):
+                            a["verified"] = b["verified"] = False
                 return {"ok": True, "query_type": ds_data.get("query_type", "poi"),
-                        "source": "deepseek_only", "locations": [fin(l, False) for l in locs]}
-            
+                        "source": "deepseek_only", "locations": pinned}
+
             # Có đúng 1 kết quả -> verify chặt chẽ qua _pin (Resolve 2)
             loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)
             return {"ok": True, "query_type": ds_data.get("query_type", "poi"),
