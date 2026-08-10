@@ -492,6 +492,30 @@ def _poi_queries(name, map_query=""):
     return list(dict.fromkeys([v for v in variants if v]))[:4]
 
 
+def _drop_coincident(pinned):
+    """Loại các candidate ghim TRÙNG ĐIỂM (<200m) với một candidate khác, chỉ giữ đại
+    diện đầu mỗi cụm (locs đã sort theo khoảng cách -> đại diện là cái gần điểm đón
+    nhất). Áp dụng cho cả Gemini và DeepSeek: cả hai đều có lúc BỊA thêm chi nhánh
+    không có thật (đo được: hỏi "Đại học Công nghiệp Hà Nội", 2/3 lần liệt kê thêm cả
+    'Cơ sở Thanh Hóa'/'Cơ sở Nghệ An' không tồn tại). Vì chi nhánh bịa không khớp gì
+    trong OSM, nó rơi về đúng toạ độ của cơ sở THẬT gần nhất -> hai chi nhánh khác nhau
+    ghim trùng điểm (chi nhánh thật không bao giờ cách nhau <200m). Đây gần như chắc
+    là bịa, nên LOẠI HẲN khỏi danh sách đọc cho người dùng, không chỉ hạ cờ verified.
+    """
+    kept, seen_idx = [], set()
+    for i, a in enumerate(pinned):
+        if i in seen_idx:
+            continue
+        cluster = [i]
+        for j, b in enumerate(pinned[i + 1:], start=i + 1):
+            if (a.get("lat") is not None and b.get("lat") is not None and
+                    _haversine_km(a["lat"], a["lng"], b["lat"], b["lng"]) < 0.2):
+                cluster.append(j)
+        seen_idx.update(cluster)
+        kept.append(pinned[i])
+    return kept
+
+
 def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=False):
     """Chốt toạ độ để ghim lên bản đồ. Trả (loc, verified).
 
@@ -685,18 +709,8 @@ def resolve_locations(text, user_lat=None, user_lng=None):
                 futs = [pool.submit(_pin, l, center_lat, center_lng, is_addr, pickup, True)
                         for l in locs]
                 pinned = [fin(loc, ok) for loc, ok in (f.result() for f in futs)]
-            # Gemini đôi lúc lẫn (dù temperature=0, kết quả tìm kiếm web nuôi cho nó vẫn
-            # đổi giữa các lần gọi) và gán nhầm cùng một khu vực cho hai chi nhánh khác
-            # nhau -> hai candidate ghim trùng điểm nhưng vẫn được báo verified=True. Bắt
-            # bằng cách so khoảng cách giữa các candidate với nhau (không cần biết đó là
-            # chỗ nào) — hai chi nhánh thật của cùng một nơi luôn cách nhau > 200m.
-            for i, a in enumerate(pinned):
-                for b in pinned[i + 1:]:
-                    if (a.get("lat") is not None and b.get("lat") is not None and
-                            _haversine_km(a["lat"], a["lng"], b["lat"], b["lng"]) < 0.2):
-                        a["verified"] = b["verified"] = False
             return {"ok": True, "query_type": data.get("query_type", "poi"),
-                    "source": "grounded", "locations": pinned}
+                    "source": "grounded", "locations": _drop_coincident(pinned)}
 
         # Chỉ MỘT nơi -> đó chính là điểm đến, chốt toạ độ luôn.
         loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)
@@ -707,7 +721,10 @@ def resolve_locations(text, user_lat=None, user_lng=None):
     # 2) Gemini hỏng/không có key -> Dùng DeepSeek (llm_json) làm đầu não để phân tích chi nhánh/địa chỉ
     prompt = (
         f'Người dùng tìm địa điểm: "{text}".\n'
-        'Nhiệm vụ: Xác định tên chuẩn xác. Nếu đây là địa điểm có nhiều chi nhánh (ví dụ: đại học khxh&nv, lotteria, starbucks...), liệt kê tối đa 4 chi nhánh nổi bật nhất ở VN.\n'
+        'Nhiệm vụ: Xác định tên chuẩn xác. Nếu đây là địa điểm có nhiều chi nhánh (ví dụ: đại học khxh&nv, lotteria, starbucks...), liệt kê CÁC CƠ SỞ/CHI NHÁNH BẠN CHẮC CHẮN LÀ CÓ THẬT, tối đa 4, gần TPHCM/Hà Nội trước.\n'
+        'KHÔNG BỊA thêm cơ sở chỉ để cho đủ số lượng — nếu chỉ chắc chắn có 1-2 cơ sở thì trả về đúng 1-2, ít mà đúng hơn nhiều mà sai.\n'
+        'Đặt tên chi nhánh theo SỐ THỨ TỰ đơn giản (Cơ sở 1, Cơ sở 2...) nếu không chắc tên gọi chính thức của từng cơ sở — '
+        'KHÔNG tự chế tên theo tỉnh/thành (vd "Cơ sở Thanh Hóa", "Cơ sở Nghệ An") trừ khi bạn CHẮC CHẮN đó là tên gọi thật.\n'
         'Nếu là địa chỉ cụ thể, trả về 1 kết quả.\n'
         'CHỈ trả về JSON định dạng sau (không giải thích):\n'
         '{"query_type": "poi|address", "locations": [{"name": "Tên chi nhánh (rất chuẩn xác)", "address": "Địa chỉ ngắn gọn (số, đường, phường, quận, tỉnh)"}]}'
@@ -742,13 +759,8 @@ def resolve_locations(text, user_lat=None, user_lng=None):
                     futs = [pool.submit(_pin, l, center_lat, center_lng, is_addr, pickup, True)
                             for l in locs]
                     pinned = [fin(loc, ok) for loc, ok in (f.result() for f in futs)]
-                for i, a in enumerate(pinned):
-                    for b in pinned[i + 1:]:
-                        if (a.get("lat") is not None and b.get("lat") is not None and
-                                _haversine_km(a["lat"], a["lng"], b["lat"], b["lng"]) < 0.2):
-                            a["verified"] = b["verified"] = False
                 return {"ok": True, "query_type": ds_data.get("query_type", "poi"),
-                        "source": "deepseek_only", "locations": pinned}
+                        "source": "deepseek_only", "locations": _drop_coincident(pinned)}
 
             # Có đúng 1 kết quả -> verify chặt chẽ qua _pin (Resolve 2)
             loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)
