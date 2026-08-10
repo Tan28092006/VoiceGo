@@ -582,7 +582,10 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     if not ref:
         mb = _mapbox_first(addr or name, center_lat, center_lng)
         if mb and _within_service(mb["lat"], mb["lng"], center_lat, center_lng):
-            ref = mb
+            # Cùng phép kiểm áp cho nhánh Nominatim ở trên: Mapbox cũng là geocoder
+            # thật, tên khớp thật trong địa chỉ nó trả về cũng đáng tin hơn Gemini đoán.
+            grounded = not is_address and _name_grounded(name, mb.get("address"))
+            ref = {**mb, "address": mb.get("address") if grounded else (addr or mb.get("address"))}
 
     if not ref:
         return loc, False                          # không có gì để đối chiếu
