@@ -142,6 +142,15 @@ def _park_429(key):
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
 _GEMINI_MODEL_FOR = {}   # key -> model thực sự dùng được với key đó
 
+# Grounding (Google Search) có hạn mức RIÊNG, CHIA SẺ chung cho mọi model/key — đo thật:
+# 3 key đều 429 ngay cả trên gemini-3.5-flash-lite (RPD 500/ngày) trong khi gọi KHÔNG
+# grounding trên chính model đó vẫn chạy ngay. Với hạn mức nhỏ như vậy, bật grounding
+# cho một app demo công khai là tự trói: cạn trong vài chục lượt là rơi hẳn xuống DeepSeek
+# (không geocode được gì). Mặc định TẮT — _pin() đã luôn đối chiếu qua geocoder thật nên
+# không còn phụ thuộc vào việc Gemini có tra web sống hay không. Đặt GEMINI_GROUNDING=true
+# nếu sau này có hạn mức riêng đủ lớn (tài khoản trả phí) mới nên bật lại.
+GEMINI_GROUNDING = os.getenv("GEMINI_GROUNDING", "false").strip().lower() in ("1", "true", "yes")
+
 # Ghim sẵn model cho từng key để khỏi tốn một lần 404 mới học được: đặt
 # GEMINI_MODELS="gemini-2.5-flash,,gemini-3.1-flash-lite" — theo ĐÚNG thứ tự key
 # trong pool, ô để trống nghĩa là key đó dùng GEMINI_MODEL mặc định.
@@ -423,12 +432,14 @@ def _build_prompt(text, user_lat, user_lng, grounded):
 
 
 def _gemini_locations(text, user_lat, user_lng):
-    """GROUNDED Gemini -> {query_type, locations:[{name,address,lat,lng}]} with REAL
-    coords, or None. Plain (non-grounded) LLM coords are hallucinated, so we only
-    trust grounded output; without a key the caller falls back to a real geocoder."""
+    """Gemini -> {query_type, locations:[{name,address,lat,lng}]}, or None. Chỉ dùng để
+    ĐỀ XUẤT tên/chi nhánh — toạ độ của model KHÔNG được tin, luôn đối chiếu qua geocoder
+    thật ở _pin(). Nhờ vậy grounding (Google Search) là TÙY CHỌN (GEMINI_GROUNDING), không
+    bắt buộc: tắt grounding tránh đúng cái quota nhỏ giọt và chia sẻ chung mọi model/key."""
     if not GEMINI_API_KEYS:
         return None
-    data = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, True), grounded=True, retries=1))
+    data = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, GEMINI_GROUNDING),
+                                     grounded=GEMINI_GROUNDING, retries=1))
     if not data:
         return None
     out = []
