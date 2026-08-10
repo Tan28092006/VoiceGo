@@ -1,8 +1,8 @@
 """
 main.py — FastAPI backend for VoiceGo (đặt xe bằng giọng nói cho người khiếm thị).
 
-Server-side only what needs to be: FPT.AI STT/TTS proxies (CORS + keep keys off
-the client) and the conversational agent loop (Groq function-calling + tools).
+Server-side only what needs to be: Groq Whisper STT + Edge TTS proxies (keep keys
+off the client) and the conversational agent loop (DeepSeek function-calling + tools).
 """
 from fastapi import FastAPI, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 import os
 import time
 
-from voice import speech_to_text, text_to_speech, stream_text_to_speech, whisper_stt
+from voice import text_to_speech, stream_text_to_speech, whisper_stt
 from geocode import resolve_destination
 from agent import run_agent
 from db import (
@@ -265,35 +265,23 @@ def admin_reject_report(report_id: str, req: RejectReportRequest):
 
 
 @app.post("/api/voice/stt")
-async def voice_stt(file: UploadFile = File(...), engine: str = "whisper"):
-    """Transcribe Vietnamese audio. Default: Groq Whisper (primary) + FPT fallback.
-    Pass ?engine=fpt to try FPT.AI ASR first (Groq fallback).
-    `engine_used` says which engine ACTUALLY produced the text (no silent fallback)."""
+async def voice_stt(file: UploadFile = File(...)):
+    """Transcribe Vietnamese audio via Groq Whisper. Không có tầng dự phòng ở backend
+    (FPT đã bỏ, hết dùng được) — khi hỏng, frontend tự lùi về Web Speech API của trình
+    duyệt (free, không qua server) chứ không có engine thứ hai ở đây."""
     _t0 = time.perf_counter()
     audio = await file.read()
     fname = file.filename or "speech.wav"
-    if engine == "fpt":
-        result = speech_to_text(audio)                          # FPT first
-        engine_used = "fpt" if result.get("text") else None
-        if not result.get("text"):
-            result = whisper_stt(audio, fname)                  # -> Groq Whisper
-            engine_used = "whisper" if result.get("text") else "none"
-    else:
-        result = whisper_stt(audio, fname)                      # Groq Whisper (default)
-        engine_used = "whisper" if result.get("text") else None
-        if not result.get("text"):
-            result = speech_to_text(audio)                      # -> FPT fallback
-            engine_used = "fpt" if result.get("text") else "none"
-    result["engine"] = engine            # engine requested
-    result["engine_used"] = engine_used  # engine that actually produced the text
+    result = whisper_stt(audio, fname)
+    result["engine_used"] = "whisper" if result.get("text") else "none"
     result["ms"] = int((time.perf_counter() - _t0) * 1000)
-    print(f"[timing] STT {result['ms']}ms | engine={engine_used} | {len(audio)}B")
+    print(f"[timing] STT {result['ms']}ms | engine={result['engine_used']} | {len(audio)}B")
     return result
 
 
 @app.post("/api/voice/tts")
 def voice_tts(req: TtsRequest):
-    """Synthesize Vietnamese speech via FPT TTS, return mp3 bytes."""
+    """Synthesize Vietnamese speech via Edge TTS, return mp3 bytes."""
     audio = text_to_speech(req.text, req.voice, req.speed)
     if audio is None:
         return JSONResponse({"error": "tts_failed"}, status_code=502)

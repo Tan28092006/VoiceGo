@@ -1,16 +1,12 @@
 """
-voice.py — Thin proxies for FPT.AI Speech-to-Text (ASR) and Text-to-Speech (TTS).
+voice.py — Speech-to-Text (Groq Whisper) and Text-to-Speech (Microsoft Edge TTS).
 
-These two calls MUST run on the server because (a) the browser would be blocked
-by CORS calling api.fpt.ai directly and (b) we keep the API key off the client.
 Everything else (intent parsing, place matching, routing, pricing) is done in the
 browser by reusing local-engine.js — so this file stays tiny.
 """
 import os
 import re
 import json
-import time
-import requests
 
 # Load secrets from backend/.env (never committed — see .gitignore).
 try:
@@ -20,7 +16,6 @@ except ImportError:
     pass
 
 # Keys come ONLY from the environment / .env — no secrets hardcoded here.
-FPT_API_KEY = os.getenv("FPT_API_KEY", "")
 def _collect_gemini_keys() -> list[str]:
     """Gom nhiều key Gemini để CỘNG DỒN hạn mức free — mỗi key thuộc một project
     riêng nên có hạn mức riêng; N key ≈ N lần quota, đủ cho demo QR nhiều người quét.
@@ -57,14 +52,7 @@ GROQ_WHISPER_KEY = os.getenv("GROQ_WHISPER_KEY", "")
 GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")  # full > turbo cho tiếng Việt
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"            # chỉ dùng cho Whisper STT
 
-# TTS: "fpt" (giọng banmai, cần key + còn quota) | "edge" (Microsoft neural,
-# miễn phí, không cần key). Engine nào hỏng thì tự rơi sang engine kia.
-# Đặt TTS_PRIMARY=edge khi FPT hết quota — khỏi tốn ~1s/lượt gọi FPT rồi mới fallback.
-TTS_PRIMARY = os.getenv("TTS_PRIMARY", "fpt").strip().lower()
 EDGE_VOICE = os.getenv("EDGE_VOICE", "vi-VN-HoaiMyNeural")  # nữ, miền Bắc
-
-ASR_URL = "https://api.fpt.ai/hmi/asr/general"
-TTS_URL = "https://api.fpt.ai/hmi/tts/v5"
 
 
 # Client được TÁI SỬ DỤNG, không tạo mới mỗi lượt: mỗi lần new OpenAI() là một
@@ -90,7 +78,17 @@ def llm_client():
 
 
 def whisper_client():
-    """Client Groq riêng cho Whisper, cũng dùng lại để giữ kết nối."""
+    """Client Groq riêng cho Whisper, cũng dùng lại để giữ kết nối.
+
+    timeout=10s: OpenAI SDK default là 600s (10 phút) — nếu Groq treo (không phải
+    lỗi rõ như 429/401 mà chỉ không phản hồi), người dùng phải đợi tới 10 phút mới
+    rơi được xuống fallback (Web Speech API), vô hiệu hoá hẳn mục đích của lưới đỡ.
+    10s là đủ cho một lượt STT bình thường (~1-3s) mà vẫn fail nhanh khi Groq treo.
+    max_retries=0: SDK mặc định tự thử lại 2 lần khi timeout — mỗi lần đợi lại đủ
+    10s nên tổng thời gian thực đo được là ~33s, không phải 10s. STT là tương tác
+    trực tiếp với người dùng (không phải job nền), fail nhanh 1 lần rồi rơi xuống
+    fallback tốt hơn thử lại âm thầm 3 lần.
+    """
     global _WHISPER_CLIENT
     if _WHISPER_CLIENT is not None:
         return _WHISPER_CLIENT
@@ -100,7 +98,8 @@ def whisper_client():
         from openai import OpenAI
     except ImportError:
         return None
-    _WHISPER_CLIENT = OpenAI(base_url=GROQ_BASE_URL, api_key=GROQ_WHISPER_KEY)
+    _WHISPER_CLIENT = OpenAI(base_url=GROQ_BASE_URL, api_key=GROQ_WHISPER_KEY,
+                              timeout=10.0, max_retries=0)
     return _WHISPER_CLIENT
 
 
@@ -177,68 +176,12 @@ def whisper_stt(audio_bytes: bytes, filename: str = "speech.wav") -> dict:
         return {"text": "", "error": f"whisper_failed: {e}"}
 
 
-def speech_to_text(audio_bytes: bytes) -> dict:
-    """Send raw audio (wav/mp3, 16kHz mono works best) to FPT ASR."""
-    try:
-        r = requests.post(
-            ASR_URL,
-            # FPT STT docs use "api_key"; TTS uses "api-key". Send both to be safe.
-            headers={"api_key": FPT_API_KEY, "api-key": FPT_API_KEY},
-            data=audio_bytes,
-            timeout=30,
-        )
-        j = r.json()
-    except Exception as e:  # noqa: BLE001
-        return {"text": "", "error": f"asr_failed: {e}"}
-
-    hyps = j.get("hypotheses") or []
-    text = hyps[0].get("utterance", "") if hyps else ""
-    return {"text": text.strip(), "status": j.get("status"), "raw": j}
-
-
-def _fpt_tts(text: str, voice: str = "banmai", speed: str = "") -> bytes | None:
-    """
-    Call FPT TTS, then download the generated MP3 (FPT returns an async URL that
-    becomes ready after ~1s). Returns mp3 bytes or None on failure.
-    """
-    if not FPT_API_KEY:
-        return None
-    try:
-        r = requests.post(
-            TTS_URL,
-            headers={"api-key": FPT_API_KEY, "voice": voice, "speed": str(speed)},
-            data=text.encode("utf-8"),
-            timeout=15,
-        )
-        j = r.json()
-    except Exception:  # noqa: BLE001
-        return None
-
-    async_url = j.get("async")
-    if not async_url:
-        return None
-
-    # Poll the async URL until the audio is ready. Poll immediately (no lead
-    # sleep) then every 0.4s — finer polling catches the file ~1s sooner per
-    # reply. Budget ~7s total (18 × 0.4s) ≈ old 8.4s.
-    for i in range(18):
-        try:
-            a = requests.get(async_url, timeout=15)
-            ctype = a.headers.get("Content-Type", "")
-            if a.status_code == 200 and ("audio" in ctype or a.content[:3] == b"ID3" or a.content[:2] == b"\xff\xfb"):
-                return a.content
-        except Exception:  # noqa: BLE001
-            pass
-        time.sleep(0.4)
-    return None
-
-
 def _edge_tts(text: str, speed: str = "") -> bytes | None:
     """
     Microsoft Edge neural TTS — miễn phí, KHÔNG cần API key, giọng vi-VN tự nhiên.
-    Lưới an toàn khi FPT hết quota: nếu thiếu tầng này, frontend rơi thẳng xuống
-    speechSynthesis của trình duyệt — mà máy tính Windows thường không cài giọng
-    tiếng Việt nên sẽ đọc tiếng Việt bằng giọng Anh, nghe không hiểu được.
+    Nếu hàm này hỏng, frontend rơi thẳng xuống speechSynthesis của trình duyệt — mà
+    máy tính Windows thường không cài giọng tiếng Việt nên sẽ đọc tiếng Việt bằng
+    giọng Anh, nghe không hiểu được.
     """
     try:
         import asyncio
@@ -265,13 +208,9 @@ def _edge_tts(text: str, speed: str = "") -> bytes | None:
 
 
 def text_to_speech(text: str, voice: str = "banmai", speed: str = "") -> bytes | None:
-    """Đọc tiếng Việt: thử engine chính trước, hỏng thì rơi sang engine còn lại."""
-    order = ("edge", "fpt") if TTS_PRIMARY == "edge" else ("fpt", "edge")
-    for engine in order:
-        audio = _edge_tts(text, speed) if engine == "edge" else _fpt_tts(text, voice, speed)
-        if audio:
-            return audio
-    return None
+    """Đọc tiếng Việt qua Edge TTS. `voice` giữ lại trong signature cho tương thích
+    endpoint cũ, không dùng (Edge chỉ theo EDGE_VOICE)."""
+    return _edge_tts(text, speed)
 
 
 async def edge_tts_stream(segment: str, rate: str):
@@ -284,36 +223,25 @@ async def edge_tts_stream(segment: str, rate: str):
 
 async def stream_text_to_speech(text: str, voice: str = "banmai", speed: str = ""):
     """
-    Hỗ trợ streaming âm thanh trực tiếp (nhanh hơn rất nhiều).
-    Vì FPT không hỗ trợ streaming từng chunk qua HTTP, ta sẽ dùng Edge TTS cho streaming
-    để đạt độ trễ thấp nhất. Nếu có lỗi, fallback sang block download của FPT.
-    """
-    import asyncio
+    Streaming âm thanh trực tiếp qua Edge TTS (nhanh hơn tải nguyên file rồi mới phát).
+    `voice` giữ lại trong signature cho tương thích endpoint cũ, không dùng.
 
+    MỘT lần gọi cho cả đoạn. Đã thử cắt theo câu để ra tiếng sớm hơn nhưng đo lại
+    thì tệ hơn: byte đầu chỉ nhanh ~80ms trong khi TỔNG thời gian gấp 3 lần
+    (1 lần gọi 885-1123ms so với cắt câu 2688-3190ms), vì mỗi mẩu phải mở một
+    WebSocket riêng tới Edge. Độ trễ ở đây do BẮT TAY KẾT NỐI, không do độ dài chữ:
+    kết nối ấm thì đoạn 304 ký tự vẫn ra tiếng sau ~500ms.
+
+    Nếu Edge lỗi/đứt giữa đường, response sẽ ngắn hoặc rỗng: HTTP vẫn 200 nên trình
+    duyệt chỉ thấy "audio hỏng" — client tự đọc bù bằng speechSynthesis (xem tts.js).
+    """
     s = str(speed).strip()
     rate = f"{int(s):+d}%" if s.lstrip("+-").isdigit() else "+0%"
-
-    # MỘT lần gọi cho cả đoạn. Đã thử cắt theo câu để ra tiếng sớm hơn nhưng đo lại
-    # thì tệ hơn: byte đầu chỉ nhanh ~80ms trong khi TỔNG thời gian gấp 3 lần
-    # (1 lần gọi 885-1123ms so với cắt câu 2688-3190ms), vì mỗi mẩu phải mở một
-    # WebSocket riêng tới Edge. Độ trễ ở đây do BẮT TAY KẾT NỐI, không do độ dài chữ:
-    # kết nối ấm thì đoạn 304 ký tự vẫn ra tiếng sau ~500ms.
-    spoke = False
     try:
         async for chunk in edge_tts_stream(text, rate):
-            spoke = True
             yield chunk
     except Exception:  # noqa: BLE001
         pass
-
-    # Chỉ gọi FPT khi Edge KHÔNG ra byte nào — tránh đọc chồng hai giọng nếu Edge
-    # đứt giữa đường. Và nếu cả hai đều tịt thì response sẽ rỗng: HTTP vẫn 200 nên
-    # trình duyệt chỉ thấy "audio hỏng", vì vậy client phải tự đọc bù (xem tts.js).
-    if not spoke:
-        audio = await asyncio.to_thread(_fpt_tts, text, voice, speed)
-        if audio:
-            for i in range(0, len(audio), 8192):
-                yield audio[i:i + 8192]
 
 
 def stream_agent_narration(booking: dict):

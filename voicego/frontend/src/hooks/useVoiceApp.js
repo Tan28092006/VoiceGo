@@ -5,10 +5,7 @@ import { speak, stop as stopSpeech, unlockAudio, isSpeaking } from '../services/
 import VoiceRecorder from '../services/voiceRecorder';
 import { connectSocket, emitPassengerWaiting, disconnectSocket } from '../services/socket';
 import { startBeacon, stopBeacon, setBeaconIntensity } from '../services/beacon';
-
-// STT engine. Mặc định Groq Whisper (whisper-large-v3) — FPT ASR đã hết quota
-// (free/paid = 0 -> 429). Mở với ?stt=fpt để thử lại FPT nếu sau này nạp quota.
-const STT_ENGINE = new URLSearchParams(window.location.search).get('stt') || 'whisper';
+import { browserRecognize, isBrowserSttSupported } from '../services/browserStt';
 
 export default function useVoiceApp() {
   const { state, dispatch } = useApp();
@@ -194,9 +191,21 @@ export default function useVoiceApp() {
           dispatch({ type: 'SET_STATUS', payload: { main: 'Đang nhận diện giọng nói…', sub: '' } });
           let text = '';
           try {
-            text = await api.speechToText(wavBlob, 'speech.wav', STT_ENGINE);
+            const r = await api.speechToText(wavBlob, 'speech.wav');
+            text = r.text;
+            // r.error = Whisper THẬT SỰ lỗi (hết quota/mạng...), khác với text='' đơn
+            // thuần (im lặng/nhiễu). Chỉ lùi sang Web Speech API của trình duyệt (free,
+            // không qua server) khi đúng là lỗi — lưới đỡ cũ (FPT) đã hết dùng được.
+            if (!text && r.error && isBrowserSttSupported()) {
+              console.warn('Whisper failed, fallback to browser STT:', r.error);
+              dispatch({ type: 'SET_STATUS', payload: { main: 'Đang nghe (dự phòng)…', sub: '' } });
+              text = await browserRecognize('vi-VN');
+            }
           } catch (err) {
             console.warn('STT failed:', err);
+            if (isBrowserSttSupported()) {
+              text = await browserRecognize('vi-VN');
+            }
           } finally {
             processingRef.current = false;   // dù hỏng cũng phải nhả khoá, không thì kẹt luôn
           }

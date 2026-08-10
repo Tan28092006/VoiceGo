@@ -5,13 +5,15 @@ export async function checkHealth() {
   return res.json();
 }
 
-export async function speechToText(audioBlob, filename = 'audio.wav', engine = '') {
+// Trả cả {text, error}: 'error' có nghĩa Whisper THẬT SỰ lỗi (hết quota/mạng...),
+// khác với text='' đơn thuần (chỉ là im lặng/nhiễu, Whisper vẫn chạy bình thường).
+// Caller dùng 'error' để biết khi nào nên lùi sang Web Speech API của trình duyệt.
+export async function speechToText(audioBlob, filename = 'audio.wav') {
   const form = new FormData();
   form.append('file', audioBlob, filename);
-  const qs = engine ? `?engine=${encodeURIComponent(engine)}` : '';
-  const res = await fetch(`${BACKEND_URL}/api/voice/stt${qs}`, { method: 'POST', body: form });
+  const res = await fetch(`${BACKEND_URL}/api/voice/stt`, { method: 'POST', body: form });
   const data = await res.json();
-  return data.text;
+  return { text: data.text || '', error: data.error || null };
 }
 
 export async function textToSpeech(text, voice = 'banmai', speed = '') {
