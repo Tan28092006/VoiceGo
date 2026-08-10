@@ -141,6 +141,7 @@ def _park_429(key):
 # tốn thêm một lần 404.
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
 _GEMINI_MODEL_FOR = {}   # key -> model thực sự dùng được với key đó
+_GEMINI_NO_THINKING = set()   # model -> đã biết từ chối thinking_config (400), bỏ ngay lần sau
 
 # Grounding (Google Search) có hạn mức RIÊNG, CHIA SẺ chung cho mọi model/key — đo thật:
 # 3 key đều 429 ngay cả trên gemini-3.5-flash-lite (RPD 500/ngày) trong khi gọi KHÔNG
@@ -172,23 +173,28 @@ def _gemini_call(prompt, grounded, retries=2):
     except ImportError:
         return None
 
-    # thinking_budget=0 -> TẮT "thinking" của Gemini 2.5 Flash (mặc định BẬT).
-    # Đo thực tế trên chính prompt này: 16s -> 3.2s, grounding vẫn chạy thật
-    # (groundingMetadata còn nguyên) và toạ độ vẫn khớp thực địa. Đây là khoản
-    # tiết kiệm lớn nhất của cả luồng — tra địa điểm là tra cứu, không cần suy luận.
-    # temperature=0: cùng một câu hỏi phải ra cùng một danh sách. Mặc định của Gemini là
-    # 1.0 nên hai lượt hỏi y hệt có thể liệt kê cơ sở khác nhau (đo thật: cơ sở 3 lúc ra
-    # 'Phủ Lý, Hà Nam', lúc ra 'Dương Nội, Hà Đông') — người dùng nghe hai lần thấy lệch
-    # nhau thì mất tin. Tra địa điểm là tra cứu, không cần sáng tạo.
-    kw = {"thinking_config": types.ThinkingConfig(thinking_budget=0), "temperature": 0}
-    if grounded:
-        kw["tools"] = [types.Tool(google_search=types.GoogleSearch())]
-    try:
-        cfg = types.GenerateContentConfig(**kw)
-    except TypeError:
-        # SDK cũ chưa có thinking_config -> chạy như trước, chỉ mất phần tăng tốc.
-        cfg = (types.GenerateContentConfig(tools=kw["tools"], temperature=0) if grounded
-               else types.GenerateContentConfig(temperature=0))
+    def build_cfg(no_thinking=False):
+        # thinking_budget=0 -> TẮT "thinking" của Gemini 2.5 Flash (mặc định BẬT).
+        # Đo thực tế trên chính prompt này: 16s -> 3.2s, grounding vẫn chạy thật
+        # (groundingMetadata còn nguyên) và toạ độ vẫn khớp thực địa. Đây là khoản
+        # tiết kiệm lớn nhất của cả luồng — tra địa điểm là tra cứu, không cần suy luận.
+        # NHƯNG model khác (gemini-3.5-flash-lite) từ chối luôn tham số này — 400
+        # INVALID_ARGUMENT, không phải lỗi quota — nên phải bỏ được theo từng model.
+        # temperature=0: cùng một câu hỏi phải ra cùng một danh sách. Mặc định của Gemini là
+        # 1.0 nên hai lượt hỏi y hệt có thể liệt kê cơ sở khác nhau (đo thật: cơ sở 3 lúc ra
+        # 'Phủ Lý, Hà Nam', lúc ra 'Dương Nội, Hà Đông') — người dùng nghe hai lần thấy lệch
+        # nhau thì mất tin. Tra địa điểm là tra cứu, không cần sáng tạo.
+        kw = {"temperature": 0}
+        if not no_thinking:
+            kw["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        if grounded:
+            kw["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+        try:
+            return types.GenerateContentConfig(**kw)
+        except TypeError:
+            # SDK cũ chưa có thinking_config -> chạy như trước, chỉ mất phần tăng tốc.
+            kw.pop("thinking_config", None)
+            return types.GenerateContentConfig(**kw)
 
     global _gemini_rr
     now = time.time()
@@ -204,12 +210,20 @@ def _gemini_call(prompt, grounded, retries=2):
             client = _GEMINI_CLIENTS[key] = genai.Client(api_key=key)
         for i in range(retries + 1):
             model = _GEMINI_MODEL_FOR.get(key, GEMINI_MODEL)
+            cfg = build_cfg(no_thinking=model in _GEMINI_NO_THINKING)
             try:
                 r = client.models.generate_content(model=model, contents=prompt, config=cfg)
                 _GEMINI_STRIKES.pop(key, None)      # key lại chạy được -> xoá lịch sử phạt
                 return (r.text or "").strip()
             except Exception as e:  # noqa: BLE001
                 msg = str(e)
+                # Model này không nhận thinking_config (gemini-3.5-flash-lite -> 400
+                # INVALID_ARGUMENT, KHÔNG phải quota) -> nhớ lại rồi thử lại NGAY không
+                # kèm tham số đó, khỏi tốn cả key vì một tham số không tương thích.
+                if (("400" in msg or "INVALID_ARGUMENT" in msg) and
+                        model not in _GEMINI_NO_THINKING):
+                    _GEMINI_NO_THINKING.add(model)
+                    continue
                 # Project của key này không có model đang cấu hình (2.5-flash bị khoá
                 # với tài khoản mới) -> chuyển key đó sang model thay thế và thử lại
                 # NGAY, thay vì bỏ phí cả một key còn quota.
