@@ -424,6 +424,7 @@ def _build_prompt(text, user_lat, user_lng, grounded):
         "bỏ tiền tố loại hình ('Trường', 'Công ty', 'Trung tâm'), KHÔNG dấu ngoặc, "
         "GIỮ phần chi nhánh dạng chữ thường ('cơ sở 2'), KHÔNG kèm số nhà/phường/quận. "
         "Vd 'Trường Đại học Công nghiệp Hà Nội (Cơ sở 2)' -> 'Đại học Công nghiệp Hà Nội cơ sở 2'.\n"
+        "Chuẩn hóa tên bằng cách cộng thêm số thứ tự cơ sở vd: Bách khoa cơ sở 2 thay vì ghi Bách khoa Dĩ an.\n"
         "Toạ độ DMS tới 0.1 giây, đặt pin ĐÚNG địa điểm (vd 10°47'09.1\"N, 106°42'09.8\"E).\n"
         "CHỈ trả JSON, không giải thích:\n"
         '{"query_type":"poi|address","locations":[{"name":"","map_query":"","full_address":"",'
@@ -722,7 +723,6 @@ def resolve_locations(text, user_lat=None, user_lng=None):
     prompt = (
         f'Người dùng tìm địa điểm: "{text}".\n'
         'Nhiệm vụ: Xác định tên chuẩn xác. Nếu đây là địa điểm có nhiều chi nhánh (ví dụ: đại học khxh&nv, lotteria, starbucks...), liệt kê CÁC CƠ SỞ/CHI NHÁNH BẠN CHẮC CHẮN LÀ CÓ THẬT, tối đa 4, gần TPHCM/Hà Nội trước.\n'
-        'KHÔNG BỊA thêm cơ sở chỉ để cho đủ số lượng — nếu chỉ chắc chắn có 1-2 cơ sở thì trả về đúng 1-2, ít mà đúng hơn nhiều mà sai.\n'
         'Đặt tên chi nhánh theo SỐ THỨ TỰ đơn giản (Cơ sở 1, Cơ sở 2...) nếu không chắc tên gọi chính thức của từng cơ sở — '
         'KHÔNG tự chế tên theo tỉnh/thành (vd "Cơ sở Thanh Hóa", "Cơ sở Nghệ An") trừ khi bạn CHẮC CHẮN đó là tên gọi thật.\n'
         'Nếu là địa chỉ cụ thể, trả về 1 kết quả.\n'
