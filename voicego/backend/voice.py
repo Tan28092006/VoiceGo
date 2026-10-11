@@ -52,6 +52,19 @@ GROQ_WHISPER_KEY = os.getenv("GROQ_WHISPER_KEY", "")
 GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")  # full > turbo cho tiếng Việt
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"            # chỉ dùng cho Whisper STT
 
+# ── Gemini Live STT (nhánh mới, bật bằng STT_ENGINE=gemini-live hoặc nút trên UI) ──
+# Trình duyệt stream PCM THẲNG tới Gemini qua WebSocket; server chỉ cấp ephemeral
+# token (key thật không lộ ra client). Mặc định vẫn là Whisper.
+STT_ENGINE = "gemini-live" if os.getenv("STT_ENGINE", "").strip().lower() == "gemini-live" else "whisper"
+GEMINI_LIVE_MODEL = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.5-transcribe-live")
+# Bias nhận dạng về tên riêng hay gặp (thay cho prompt của Whisper). Tối đa 1000 cụm.
+LIVE_VOCAB = [
+    "Chợ Bến Thành", "Landmark 81", "Đại học Bách Khoa", "Đại học Công nghệ Thông tin",
+    "Đại học Khoa học Tự nhiên", "Đại học Quốc tế", "sân bay Tân Sơn Nhất", "Vạn Hạnh Mall",
+    "bệnh viện Chợ Rẫy", "Thủ Đức", "Quận 1", "Quận 10", "xe máy", "ô tô", "đồng ý", "huỷ",
+    "đổi điểm đến",
+]
+
 EDGE_VOICE = os.getenv("EDGE_VOICE", "vi-VN-HoaiMyNeural")  # nữ, miền Bắc
 
 
@@ -174,6 +187,51 @@ def whisper_stt(audio_bytes: bytes, filename: str = "speech.wav") -> dict:
         return {"text": (r.text or "").strip()}
     except Exception as e:  # noqa: BLE001
         return {"text": "", "error": f"whisper_failed: {e}"}
+
+
+_LIVE_CLIENTS: dict[str, object] = {}
+_live_rr = 0
+
+
+def gemini_live_token() -> dict:
+    """Cấp ephemeral token 1-lần cho trình duyệt mở session Gemini Live.
+
+    Xoay vòng các key (mỗi key một project = một hạn mức riêng), key nào lỗi thì thử
+    key kế. Token phải dùng để MỞ session trong 1 phút; session sống tới 30 phút.
+    KHÔNG khoá language_codes trong token: SDK từ chối tham số đó ở chế độ Developer
+    API — client tự gửi vi-VN + vocab trong message setup (đã test chạy được).
+    """
+    global _live_rr
+    if not GEMINI_API_KEYS:
+        return {"error": "no_gemini_key"}
+    try:
+        import datetime
+        from google import genai
+    except ImportError:
+        return {"error": "no_genai_sdk"}
+    last = ""
+    for i in range(len(GEMINI_API_KEYS)):
+        key = GEMINI_API_KEYS[(_live_rr + i) % len(GEMINI_API_KEYS)]
+        try:
+            client = _LIVE_CLIENTS.get(key)
+            if client is None:
+                client = genai.Client(api_key=key, http_options={"api_version": "v1alpha"})
+                _LIVE_CLIENTS[key] = client
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            tok = client.auth_tokens.create(config={
+                "uses": 1,
+                "expire_time": now + datetime.timedelta(minutes=30),
+                "new_session_expire_time": now + datetime.timedelta(minutes=1),
+                "live_connect_constraints": {
+                    "model": GEMINI_LIVE_MODEL,
+                    "config": {"response_modalities": ["TEXT"]},
+                },
+            })
+            _live_rr = (_live_rr + i + 1) % len(GEMINI_API_KEYS)
+            return {"token": tok.name, "model": GEMINI_LIVE_MODEL, "vocab": LIVE_VOCAB}
+        except Exception as e:  # noqa: BLE001
+            last = str(e)[:200]
+    return {"error": f"token_failed: {last}"}
 
 
 def _edge_tts(text: str, speed: str = "") -> bytes | None:

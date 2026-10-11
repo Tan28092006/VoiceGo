@@ -2,6 +2,19 @@ import React, { createContext, useContext, useReducer } from 'react';
 
 const AppContext = createContext(null);
 
+// Nhánh STT chọn bằng nút trên Header, nhớ theo từng máy. Chưa chọn bao giờ thì theo
+// mặc định của server (env STT_ENGINE, đọc qua /api/health), mặc định nữa là Whisper.
+const STT_KEY = 'voicego.stt';
+function storedStt() {
+  try {
+    const v = localStorage.getItem(STT_KEY);
+    return v === 'gemini-live' || v === 'whisper' ? v : null;
+  } catch { return null; }
+}
+export function saveSttEngine(v) {
+  try { localStorage.setItem(STT_KEY, v); } catch {}
+}
+
 // State shape
 const initialState = {
   appState: 'idle', // idle | listening | destination_set | confirming | booking | trip_live
@@ -27,6 +40,8 @@ const initialState = {
   agentLog: [],        // array of log lines for agent overlay
   agentResult: '',     // final agent result text
   agentStream: '',     // agent reply streamed word-by-word (shown on the stage)
+  sttEngine: storedStt() || 'whisper',   // 'whisper' (nhánh hiện tại) | 'gemini-live'
+  sttEnginePicked: !!storedStt(),        // máy này đã tự chọn -> không theo mặc định server
 };
 
 function appReducer(state, action) {
@@ -55,6 +70,7 @@ function appReducer(state, action) {
     case 'ADD_AGENT_LOG': return { ...state, agentLog: [...state.agentLog, action.payload] };
     case 'SET_AGENT_RESULT': return { ...state, agentResult: action.payload };
     case 'SET_STREAM': return { ...state, agentStream: action.payload };
+    case 'SET_STT_ENGINE': return { ...state, sttEngine: action.payload };
     case 'RESET_TRIP': return {
       ...state,
       appState: 'idle',

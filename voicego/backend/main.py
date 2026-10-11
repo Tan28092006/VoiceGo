@@ -12,7 +12,8 @@ from pydantic import BaseModel
 import os
 import time
 
-from voice import text_to_speech, stream_text_to_speech, whisper_stt
+from voice import (text_to_speech, stream_text_to_speech, whisper_stt, gemini_live_token,
+                   STT_ENGINE, GEMINI_API_KEYS)
 from geocode import resolve_destination
 from agent import run_agent
 from db import (
@@ -144,7 +145,9 @@ def db_response(fn, *args, **kwargs):
 def health():
     # HEAD too: uptime monitors (UptimeRobot, Render) default to HEAD; a GET-only
     # route answers HEAD with 405 and the monitor flags the service as down.
-    return {"status": "ok", "service": "voicego", "mongo": mongo_status()}
+    # stt_engine = nhánh STT mặc định (env STT_ENGINE); nút trên UI ghi đè theo máy.
+    return {"status": "ok", "service": "voicego", "mongo": mongo_status(),
+            "stt_engine": STT_ENGINE, "gemini_live": bool(GEMINI_API_KEYS)}
 
 
 @app.get("/api/db/status")
@@ -276,6 +279,19 @@ async def voice_stt(file: UploadFile = File(...)):
     result["engine_used"] = "whisper" if result.get("text") else "none"
     result["ms"] = int((time.perf_counter() - _t0) * 1000)
     print(f"[timing] STT {result['ms']}ms | engine={result['engine_used']} | {len(audio)}B")
+    return result
+
+
+@app.post("/api/voice/live-token")
+def voice_live_token():
+    """Ephemeral token cho nhánh Gemini Live: trình duyệt dùng nó để tự mở WebSocket
+    tới Gemini (không đi qua server này). 503 -> frontend quay về Whisper."""
+    _t0 = time.perf_counter()
+    result = gemini_live_token()
+    print(f"[timing] live-token {int((time.perf_counter() - _t0) * 1000)}ms"
+          f" | {'ok' if result.get('token') else result.get('error')}")
+    if not result.get("token"):
+        return JSONResponse(result, status_code=503)
     return result
 
 

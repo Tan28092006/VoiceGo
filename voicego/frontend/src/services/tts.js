@@ -7,6 +7,8 @@ import { initSharedAudioContext } from './voiceRecorder';
 // can still play. (A fresh `new Audio()` each time would be blocked on mobile.)
 let el = null;
 let genToken = 0;   // only the LATEST speak() is allowed to play (no overlap)
+let curText = '';   // câu AI đang đọc — nhánh Gemini Live dùng để lọc tiếng vọng khi chen ngang
+let softPaused = false;
 
 function audioEl() {
   if (!el) el = new Audio();
@@ -18,6 +20,29 @@ function audioEl() {
  *  ngoài) và tiếng đó cũng là giọng nói liên tục nên không thể lọc bằng thời lượng. */
 export function isSpeaking() {
   return !!el && !el.paused && !el.ended;
+}
+
+export function currentSpeechText() { return curText; }
+
+/**
+ * Chen ngang "mềm" (nhánh Gemini Live): TẠM DỪNG thay vì stop, để nếu hoá ra báo
+ * nhầm (ho, tiếng xe, tiếng AI vọng lại) thì đọc tiếp đúng chỗ đang đọc. Trả true
+ * nếu thật sự có tiếng đang phát để dừng.
+ */
+export function pauseSpeech() {
+  if (isSpeaking()) { try { el.pause(); softPaused = true; return true; } catch (e) {} }
+  if (window.speechSynthesis?.speaking && !window.speechSynthesis.paused) {
+    try { window.speechSynthesis.pause(); softPaused = true; return true; } catch (e) {}
+  }
+  return false;
+}
+
+/** Đọc tiếp sau pauseSpeech() (chỉ khi chưa bị stop()/speak() mới thay thế). */
+export function resumeSpeech() {
+  if (!softPaused) return;
+  softPaused = false;
+  if (el && el.paused && !el.ended && el.currentTime > 0) { el.play().catch(() => {}); return; }
+  if (window.speechSynthesis?.paused) { try { window.speechSynthesis.resume(); } catch (e) {} }
 }
 
 // Call from a user gesture (login / tap) to unlock audio + speech on mobile.
@@ -45,7 +70,9 @@ export async function speak(text, opts = {}) {
   // new load request"). Trên máy tính điều này làm câu trả lời im lặng ngẫu nhiên.
   // Chỉ cần vô hiệu lượt cũ + tạm dừng là đủ.
   const my = ++genToken;
+  softPaused = false;
   if (!text) return;
+  curText = text;
   const a = audioEl();
   try { a.pause(); } catch (e) {}
   if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch (e) {} }
@@ -134,6 +161,7 @@ export function browserSpeak(text) {
 export function stop() {
   console.log('[TTS] stop() called. Halting audio playback.');
   genToken++;   // invalidate any in-flight speak()
+  softPaused = false;
   if (el) {
     try {
       // CHỈ pause. Trước đây còn removeAttribute('src') + load() để cắt hẳn kết nối

@@ -61,3 +61,21 @@
   background: rgba(255, 255, 255, .06);
   color: var(--color-text-secondary);
 }
+
+/* Cờ chọn nhánh STT (Whisper mặc định / Gemini Live) */
+.stt-toggle {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .15);
+  background: rgba(255, 255, 255, .06);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.stt-toggle.live {
+  border-color: rgba(66, 133, 244, .5);
+  background: rgba(66, 133, 244, .18);
+  color: #8ab4f8;
+}
+.stt-toggle:active { transform: scale(0.96); }

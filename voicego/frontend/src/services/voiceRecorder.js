@@ -52,6 +52,13 @@ export default class VoiceRecorder {
         this.onSpeechStart = opts.onSpeechStart || null;
         this.onVoice = opts.onVoice || null;   // (active:boolean) -> đèn báo nghe thấy giọng
         this.silenceMs = opts.silenceMs || 1300;
+        // Nhánh Gemini Live: thời gian im lặng để chốt lượt đổi theo chữ đang nghe được
+        // (câu trọn -> cắt sớm, đuôi lơ lửng -> chờ thêm). Không truyền = silenceMs cố định.
+        this.getSilenceMs = opts.getSilenceMs || null;
+        // Nhánh Gemini Live: nhận PCM 16kHz Int16 theo thời gian thực, BẮT ĐẦU từ lúc
+        // VAD xác nhận là tiếng nói (xả luôn đoạn tiền ghi), dừng khi tự chốt lượt.
+        this.onPcm = opts.onPcm || null;
+        this._pcmFlushed = false;
         this.noSpeechMs = opts.noSpeechMs || 6000;   // give up if nothing is said
         // Ba nút vặn của VAD. Chỉnh nhanh ngay trên điện thoại bằng query string
         // (?vadmult=6&vadframes=5) để khỏi phải build lại mỗi lần thử.
@@ -215,7 +222,8 @@ export default class VoiceRecorder {
                         this._hits = Math.max(0, (this._hits || 0) - 1);
                         if (this._speechStarted) {
                             if (this._silenceStart == null) this._silenceStart = now;
-                            else if (now - this._silenceStart > this.silenceMs) {
+                            else if (now - this._silenceStart > (this.getSilenceMs
+                                ? this.getSilenceMs() : this.silenceMs)) {
                                 this._autoStopped = true;
                                 try { this.onAutoStop(); } catch (err) {}
                             }
@@ -225,6 +233,18 @@ export default class VoiceRecorder {
                             try { this.onAutoStop(); } catch (err) {}
                         }
                     }
+                }
+
+                // Gửi lên Gemini Live NGAY khi đã xác nhận có tiếng nói. Khung đầu tiên xả
+                // cả đoạn tiền ghi (trong đó có mấy từ đầu đã kích hoạt VAD), sau đó mỗi
+                // khung một lần. Ngừng gửi khi đã tự chốt lượt: phần im lặng đuôi
+                // (silenceMs) đã đi lên rồi, server VAD đủ ngữ cảnh để chốt.
+                if (this.onPcm && this._speechStarted && !this._autoStopped) {
+                    const src = this._pcmFlushed ? data : this._merge(this.chunks);
+                    this._pcmFlushed = true;
+                    try {
+                        this.onPcm(this._toPcm16(this._downsample(src, this.audioContext.sampleRate, 16000)));
+                    } catch (err) {}
                 }
             };
 
@@ -251,12 +271,8 @@ export default class VoiceRecorder {
         }
         const inputRate = this.audioContext ? this.audioContext.sampleRate : 44100;
 
-        // Merge captured chunks
-        let length = 0;
-        this.chunks.forEach(c => length += c.length);
-        const merged = new Float32Array(length);
-        let offset = 0;
-        this.chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
+        const merged = this._merge(this.chunks);
+        const length = merged.length;
 
         // We DO NOT stop the microphone stream or disconnect the nodes here.
         // Re-requesting getUserMedia while audio is playing on Android Chrome causes AEC breakage and silence.
@@ -278,6 +294,24 @@ export default class VoiceRecorder {
 
         const downsampled = this._downsample(merged, inputRate, this.targetRate);
         return this._encodeWav(downsampled, this.targetRate);
+    }
+
+    _merge(chunks) {
+        let length = 0;
+        chunks.forEach(c => length += c.length);
+        const merged = new Float32Array(length);
+        let offset = 0;
+        chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
+        return merged;
+    }
+
+    _toPcm16(samples) {
+        const out = new Int16Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
+            const s = Math.max(-1, Math.min(1, samples[i]));
+            out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+        return out;
     }
 
     _downsample(buffer, inRate, outRate) {

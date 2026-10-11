@@ -56,5 +56,12 @@ services:
       # key cũ dùng được — key mới phải đi gemini-3.1-flash-lite.
       - key: GEMINI_MODELS
         value: gemini-2.5-flash,gemini-3.1-flash-lite,gemini-3.1-flash-lite
+      # Nhánh STT mặc định: whisper (gửi file lên Groq) | gemini-live (stream WebSocket
+      # thẳng từ trình duyệt tới gemini-3.5-transcribe-live, dùng chung key GEMINI ở trên).
+      # Nút trên Header ghi đè theo từng máy; Live hỏng thì tự lùi về Whisper.
+      - key: STT_ENGINE
+        value: whisper
+      - key: GEMINI_LIVE_MODEL
+        value: gemini-3.5-transcribe-live
       - key: MAPBOX_TOKEN          # lưới đỡ cho geocode/directions; để trống -> dùng OSM/OSRM
         sync: false

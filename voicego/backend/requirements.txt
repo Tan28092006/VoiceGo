@@ -9,7 +9,7 @@ edge-tts>=6.1.9
 openai>=1.40.0
 pymongo>=4.7.0
 # Optional: real web-search grounding for geocoding (else Groq + Nominatim).
-google-genai>=0.8.0
+google-genai>=1.20.0   # >=1.20: auth_tokens (ephemeral token cho Gemini Live STT)
 
 bcrypt>=4.0.0
 
