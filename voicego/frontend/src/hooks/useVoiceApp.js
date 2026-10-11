@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, saveTtsEngine } from '../context/AppContext';
 import * as api from '../services/api';
 import { speak, stop as stopSpeech, unlockAudio, isSpeaking,
   pauseSpeech, resumeSpeech, currentSpeechText, setTtsEngine } from '../services/tts';
@@ -7,7 +7,7 @@ import VoiceRecorder from '../services/voiceRecorder';
 import { connectSocket, emitPassengerWaiting, disconnectSocket } from '../services/socket';
 import { startBeacon, stopBeacon, setBeaconIntensity } from '../services/beacon';
 import { browserRecognize, isBrowserSttSupported } from '../services/browserStt';
-import LiveStt, { silenceMsFor, stripEcho, isRealSpeech } from '../services/liveStt';
+import LiveStt, { silenceMsFor, stripEcho, isRealSpeech, looksLikeEcho } from '../services/liveStt';
 
 export default function useVoiceApp() {
   const { state, dispatch } = useApp();
@@ -27,7 +27,9 @@ export default function useVoiceApp() {
   const processingRef = useRef(false);  // đang STT/gọi agent -> KHÔNG được mở lại mic
   const sttEngineRef = useRef(state.sttEngine);  // 'whisper' (mặc định) | 'gemini-live'
   const liveRef = useRef(null);         // session Gemini Live mở sẵn (chỉ khi bật nhánh mới)
-  const bargeRef = useRef({ pending: false, timer: null, tts: '' });  // chen ngang chờ xác nhận
+  const bargeRef = useRef({ pending: false, timer: null, tts: '', heard: '' });  // chen ngang chờ xác nhận
+  const ttsEngineRef = useRef(state.ttsEngine);
+  const echoCountRef = useRef(0);       // số lần bắt được tiếng AI vọng vào mic (giọng trình duyệt)
 
   // Sau khi AI bắt đầu đọc, chờ chừng này rồi mới mở mic lại. Mở sớm thì tiếng ồn
   // trong mấy giây đầu hay cắt ngang ngay câu trả lời vừa mới bắt đầu.
@@ -53,7 +55,23 @@ export default function useVoiceApp() {
   useEffect(() => { messagesRef.current = state.messages; }, [state.messages]);
   useEffect(() => { userRef.current = state.user; }, [state.user]);
 
-  useEffect(() => { setTtsEngine(state.ttsEngine); }, [state.ttsEngine]);
+  useEffect(() => { setTtsEngine(state.ttsEngine); ttsEngineRef.current = state.ttsEngine; }, [state.ttsEngine]);
+
+  // Giọng trình duyệt cứ vọng vào mic -> TỰ đổi sang giọng Edge (thẻ <audio> đi qua bộ
+  // khử vọng của mic, speechSynthesis trên Android thì nhiều khi không). Người khiếm
+  // thị không thể tự nhận ra "AI đang tự cắt lời mình" rồi đi tìm nút trên Header,
+  // nên app phải tự làm. Nhớ theo máy: lần sau mở app là đúng giọng luôn.
+  const noteEcho = useCallback((where) => {
+    console.warn('[echo] mic nghe lai giong AI:', where, '| giong =', ttsEngineRef.current);
+    if (ttsEngineRef.current !== 'browser') return;
+    echoCountRef.current += 1;
+    if (echoCountRef.current < 2) return;
+    console.warn('[echo] giong trinh duyet vong vao mic qua nhieu -> tu doi sang giong Edge');
+    ttsEngineRef.current = 'edge';
+    setTtsEngine('edge');
+    saveTtsEngine('edge');
+    dispatch({ type: 'SET_TTS_ENGINE', payload: 'edge' });
+  }, [dispatch]);
 
   // Bật nhánh Gemini Live -> mở session NGAY (lúc đang đọc lời chào), vì mở mới tốn
   // ~1.3-2s; tắt -> đóng hẳn. Lượt đang nghe dở vẫn đi tiếp theo nhánh lúc nó bắt đầu.
@@ -187,7 +205,7 @@ export default function useVoiceApp() {
     const live = sttEngineRef.current === 'gemini-live' ? liveRef.current : null;
     const barge = bargeRef.current;
     clearTimeout(barge.timer);
-    Object.assign(barge, { pending: false, timer: null, tts: '' });
+    Object.assign(barge, { pending: false, timer: null, tts: '', heard: '' });
     const confirmBarge = () => {
       if (!barge.pending) return;
       clearTimeout(barge.timer);
@@ -198,6 +216,7 @@ export default function useVoiceApp() {
     if (live) {
       live.ensureOpen();       // thường đã mở sẵn; hỏng thì lượt này tự lùi về Whisper
       live.onText = (t) => {
+        barge.heard = t;
         // Phụ đề trực tiếp trong lúc nói (Whisper không có cái này).
         const shown = barge.tts ? stripEcho(t, barge.tts) : t;
         if (shown) dispatch({ type: 'SET_TRANSCRIPT', payload: shown });
@@ -228,15 +247,17 @@ export default function useVoiceApp() {
           // THẬT (không trùng câu AI đang đọc) mới dừng hẳn; quá BARGE_CONFIRM_MS mà
           // không có -> đọc tiếp đúng chỗ dở. Session chưa sẵn sàng thì không xác nhận
           // được -> dừng cứng như nhánh Whisper.
+          barge.tts = isSpeaking() ? currentSpeechText() : '';
           if (live) {
             live.begin();
-            barge.tts = isSpeaking() ? currentSpeechText() : '';
             if (barge.tts && live.ready && pauseSpeech()) {
               console.log('[Barge-in] tam dung TTS, cho Gemini xac nhan...');
               barge.pending = true;
               barge.timer = setTimeout(() => {
                 if (!barge.pending) return;
                 console.log('[Barge-in] bao nham -> doc tiep');
+                // Báo nhầm vì Gemini chỉ nghe ra chính câu AI đang đọc = tiếng vọng.
+                if (barge.heard && looksLikeEcho(barge.heard, barge.tts)) noteEcho('chen ngang bao nham');
                 barge.pending = false;
                 live.cancel();
                 dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
@@ -280,15 +301,7 @@ export default function useVoiceApp() {
             const t0 = performance.now();
             const r = await live.finish();
             console.log(`[liveStt] chot luot sau ${Math.round(performance.now() - t0)}ms:`, r);
-            text = barge.tts ? stripEcho(r.text, barge.tts) : r.text;
-            if (barge.pending) {
-              // Nói xong TRƯỚC khi kịp xác nhận (câu rất ngắn: "không", "huỷ").
-              if (text && isRealSpeech(r.text, barge.tts)) confirmBarge();
-              else {
-                barge.pending = false; text = ''; resumeSpeech();
-                dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
-              }
-            }
+            text = r.text;
             // Session hỏng/không mở được -> file WAV vẫn còn, gửi Whisper như cũ.
             if (r.failed) { console.warn('[liveStt] session hong -> Whisper'); useWhisper = true; }
           }
@@ -313,6 +326,22 @@ export default function useVoiceApp() {
           }
           processingRef.current = false;     // nhánh Gemini Live không đi qua finally ở trên
 
+          // Lượt này bắt đầu lúc AI đang đọc -> lọc tiếng AI vọng lại, cho CẢ HAI nhánh
+          // STT (trước đây Whisper chép lại tiếng vọng rồi gửi ngược vào agent như lời
+          // người dùng). Xoá theo luật CHẶT để không mất lời thật; đếm theo luật lỏng.
+          if (barge.tts && text) {
+            if (looksLikeEcho(text, barge.tts)) noteEcho('luot noi');
+            text = isRealSpeech(text, barge.tts) ? stripEcho(text, barge.tts) : '';
+          }
+          if (barge.pending) {
+            // Nói xong TRƯỚC khi kịp xác nhận (câu rất ngắn: "không", "huỷ").
+            if (text) confirmBarge();
+            else {
+              barge.pending = false; resumeSpeech();
+              dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
+            }
+          }
+
           if (text) {
             emptyRef.current = 0;
             dispatch({ type: 'SET_TRANSCRIPT', payload: text });
@@ -335,7 +364,7 @@ export default function useVoiceApp() {
       dispatch({ type: 'SET_RECORDING', payload: false });
       dispatch({ type: 'SET_STATUS', payload: { main: 'Không bật được micro', sub: 'Cho phép micro rồi chạm màn hình' } });
     }
-  }, [dispatch, _autoListen]);
+  }, [dispatch, _autoListen, noteEcho]);
 
   // ---- Start / stop listening ----
   const startListening = useCallback((stopTts = false) => {

@@ -316,6 +316,28 @@ export function stripEcho(text, ttsText) {
   return k ? w.slice(k).join(' ') : String(text || '').trim();
 }
 
+/**
+ * Luật LỎNG: chữ nghe được có GIỐNG câu AI đang đọc không (>=70% số từ khớp đúng thứ
+ * tự, cho phép Gemini nghe sai vài từ của tiếng vọng qua loa điện thoại). Chỉ dùng
+ * để ĐẾM tiếng vọng rồi tự đổi giọng — không dùng để xoá chữ (xoá dùng luật chặt
+ * bên dưới), vì người dùng đáp lại bằng chính chữ của AI cũng sẽ khớp luật này.
+ */
+export function looksLikeEcho(text, ttsText) {
+  const w = norm(text);
+  const t = norm(ttsText);
+  if (w.length < 4 || !t.length) return false;   // "đi xe máy" (đáp thật bằng chữ của AI) không tính
+  // Dãy con chung dài nhất (LCS) — câu ngắn (vài chục từ) nên O(n*m) là đủ.
+  let prev = new Array(t.length + 1).fill(0);
+  for (let i = 1; i <= w.length; i++) {
+    const cur = new Array(t.length + 1).fill(0);
+    for (let j = 1; j <= t.length; j++) {
+      cur[j] = w[i - 1] === t[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return prev[t.length] / w.length >= 0.7;
+}
+
 /** Chữ nghe được có phải người dùng nói THẬT (không chỉ là tiếng AI vọng lại)? */
 export function isRealSpeech(text, ttsText) {
   const w = norm(text);
