@@ -244,7 +244,10 @@ export default class LiveStt {
       if (this.sawActivity) this._drainUntil = Date.now() + 2000;
     }
     this._queue = [];
-    if (this._finish) { clearTimeout(this._finish.timer); this._finish = null; }
+    // Đang chờ finish() thì phải trả kết quả rỗng, không được bỏ treo: caller đang
+    // await nó và giữ khoá processingRef tới khi có kết quả.
+    const f = this._finish;
+    if (f) { this._finish = null; clearTimeout(f.timer); f.resolve({ text: '', failed: false }); }
     this.inTurn = false;
     this._resetTurn();
   }

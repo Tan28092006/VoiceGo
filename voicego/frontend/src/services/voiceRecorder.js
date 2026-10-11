@@ -263,6 +263,21 @@ export default class VoiceRecorder {
         this.recording = true;
     }
 
+    /** VAD đã từng xác nhận có tiếng nói trong lượt này chưa. */
+    get heardSpeech() { return this.recording && this._speechStarted; }
+
+    /**
+     * Người dùng bấm nút = "tôi nói xong rồi": chốt lượt NGAY, đi đúng đường như khi
+     * VAD tự thấy im lặng (onAutoStop -> STT -> gửi agent), không chờ hết silenceMs.
+     * Trả false nếu không có gì để chốt (chưa nghe thấy tiếng nói / đã chốt rồi).
+     */
+    finishNow() {
+        if (!this.recording || !this._speechStarted || this._autoStopped || !this.onAutoStop) return false;
+        this._autoStopped = true;
+        try { this.onAutoStop(); } catch (err) {}
+        return true;
+    }
+
     stop() {
         this.recording = false;
         if (this._voiceOn) {                   // tắt đèn báo khi ngừng thu

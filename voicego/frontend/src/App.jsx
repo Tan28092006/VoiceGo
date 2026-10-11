@@ -41,7 +41,7 @@ function AppContent({ onBack }) {
           <span className={`voice-controls-hint ${state.voiceActive ? 'hearing' : ''}`}>
             {state.voiceActive
               ? '🎧 Nghe thấy giọng bạn…'
-              : (state.recording ? 'Đang nghe… chạm để dừng' : 'Chạm để nói lại')}
+              : (state.recording ? 'Đang nghe… chạm để gửi' : 'Chạm để nói lại')}
           </span>
         </div>
       )}

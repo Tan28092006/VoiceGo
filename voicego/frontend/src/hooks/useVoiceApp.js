@@ -237,6 +237,7 @@ export default function useVoiceApp() {
                 console.log('[Barge-in] bao nham -> doc tiep');
                 barge.pending = false;
                 live.cancel();
+                dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
                 recorder.stop();               // bỏ đoạn ghi này
                 recordingRef.current = false;
                 dispatch({ type: 'SET_RECORDING', payload: false });
@@ -281,7 +282,10 @@ export default function useVoiceApp() {
             if (barge.pending) {
               // Nói xong TRƯỚC khi kịp xác nhận (câu rất ngắn: "không", "huỷ").
               if (text && isRealSpeech(r.text, barge.tts)) confirmBarge();
-              else { barge.pending = false; text = ''; resumeSpeech(); }
+              else {
+                barge.pending = false; text = ''; resumeSpeech();
+                dispatch({ type: 'SET_TRANSCRIPT', payload: '' });
+              }
             }
             // Session hỏng/không mở được -> file WAV vẫn còn, gửi Whisper như cũ.
             if (r.failed) { console.warn('[liveStt] session hong -> Whisper'); useWhisper = true; }
@@ -360,8 +364,20 @@ export default function useVoiceApp() {
   // hands-free flow (e.g. if the browser blocked auto-start without a gesture).
   const toggleListening = useCallback(() => {
     unlockAudio();   // keep mobile audio unlocked on every tap
+    // Đang nhận diện câu vừa gửi -> bỏ qua cú chạm (bấm đúp không được huỷ câu đó,
+    // cũng không được mở mic chen vào giữa lúc đang xử lý).
+    if (processingRef.current) return;
     if (recordingRef.current) {
-      // Manual OFF -> stay off (suppress the hands-free auto-reopen).
+      // Bấm nút lúc đang nói = NÓI XONG -> chốt và gửi ngay (không đợi im lặng, cũng
+      // không phải tắt mic rồi đứng im). Bấm là chủ ý chen ngang, nên nếu AI đang tạm
+      // dừng chờ xác nhận thì dừng hẳn luôn.
+      const rec = recorderRef.current;
+      if (rec?.heardSpeech) {
+        const b = bargeRef.current;
+        if (b.pending) { clearTimeout(b.timer); b.pending = false; stopSpeech(); }
+        if (rec.finishNow()) return;
+      }
+      // Chưa nghe thấy tiếng nói nào -> không có gì để gửi: tắt mic như cũ.
       pausedRef.current = true;
       stopListening();
       dispatch({ type: 'SET_STATUS', payload: { main: 'Đã tắt micro', sub: 'Chạm nút để nói tiếp' } });

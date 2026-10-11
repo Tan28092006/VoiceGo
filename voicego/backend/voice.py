@@ -52,10 +52,10 @@ GROQ_WHISPER_KEY = os.getenv("GROQ_WHISPER_KEY", "")
 GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")  # full > turbo cho tiếng Việt
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"            # chỉ dùng cho Whisper STT
 
-# ── Gemini Live STT (nhánh mới, bật bằng STT_ENGINE=gemini-live hoặc nút trên UI) ──
+# ── Gemini Live STT (MẶC ĐỊNH; STT_ENGINE=whisper hoặc nút trên UI để quay về Whisper) ──
 # Trình duyệt stream PCM THẲNG tới Gemini qua WebSocket; server chỉ cấp ephemeral
-# token (key thật không lộ ra client). Mặc định vẫn là Whisper.
-STT_ENGINE = "gemini-live" if os.getenv("STT_ENGINE", "").strip().lower() == "gemini-live" else "whisper"
+# token (key thật không lộ ra client). Live hỏng thì từng lượt tự lùi về Whisper.
+STT_ENGINE = "whisper" if os.getenv("STT_ENGINE", "").strip().lower() == "whisper" else "gemini-live"
 GEMINI_LIVE_MODEL = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.5-transcribe-live")
 # Bias nhận dạng về tên riêng hay gặp (thay cho prompt của Whisper). Tối đa 1000 cụm.
 LIVE_VOCAB = [

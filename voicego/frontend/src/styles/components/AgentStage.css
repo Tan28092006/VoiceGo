@@ -83,3 +83,6 @@
   color: var(--color-text-secondary);
   text-align: center;
 }
+
+/* Lời người dùng đang nói (Gemini Live gõ dần) — cùng cỡ chữ với lời AI, khác màu. */
+.agent-stage-text.user { color: var(--color-accent-blue); }

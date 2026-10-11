@@ -3,7 +3,7 @@ import React, { createContext, useContext, useReducer } from 'react';
 const AppContext = createContext(null);
 
 // Nhánh STT chọn bằng nút trên Header, nhớ theo từng máy. Chưa chọn bao giờ thì theo
-// mặc định của server (env STT_ENGINE, đọc qua /api/health), mặc định nữa là Whisper.
+// mặc định của server (env STT_ENGINE, đọc qua /api/health), mặc định nữa là Gemini Live.
 const STT_KEY = 'voicego.stt';
 function storedStt() {
   try {
@@ -40,7 +40,8 @@ const initialState = {
   agentLog: [],        // array of log lines for agent overlay
   agentResult: '',     // final agent result text
   agentStream: '',     // agent reply streamed word-by-word (shown on the stage)
-  sttEngine: storedStt() || 'whisper',   // 'whisper' (nhánh hiện tại) | 'gemini-live'
+  stage: 'agent',      // màn giữa đang hiện lời ai: 'agent' | 'user' (người dùng đang nói)
+  sttEngine: storedStt() || 'gemini-live',   // 'gemini-live' (mặc định) | 'whisper'
   sttEnginePicked: !!storedStt(),        // máy này đã tự chọn -> không theo mặc định server
 };
 
@@ -61,7 +62,7 @@ function appReducer(state, action) {
     case 'SET_PIN': return { ...state, pin: action.payload };
     case 'SET_MESSAGES': return { ...state, messages: action.payload };
     case 'ADD_MESSAGE': return { ...state, messages: [...state.messages, action.payload] };
-    case 'SET_TRANSCRIPT': return { ...state, transcript: action.payload };
+    case 'SET_TRANSCRIPT': return { ...state, transcript: action.payload, stage: action.payload ? 'user' : state.stage };
     case 'SET_STATUS': return { ...state, status: action.payload.main, substatus: action.payload.sub || '' };
     case 'SET_RECORDING': return { ...state, recording: action.payload, voiceActive: action.payload ? state.voiceActive : false };
     case 'SET_VOICE_ACTIVE': return { ...state, voiceActive: action.payload };
@@ -69,7 +70,7 @@ function appReducer(state, action) {
     case 'SET_AGENT_LOG': return { ...state, agentLog: action.payload };
     case 'ADD_AGENT_LOG': return { ...state, agentLog: [...state.agentLog, action.payload] };
     case 'SET_AGENT_RESULT': return { ...state, agentResult: action.payload };
-    case 'SET_STREAM': return { ...state, agentStream: action.payload };
+    case 'SET_STREAM': return { ...state, agentStream: action.payload, stage: 'agent' };
     case 'SET_STT_ENGINE': return { ...state, sttEngine: action.payload };
     case 'RESET_TRIP': return {
       ...state,
