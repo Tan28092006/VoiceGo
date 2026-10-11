@@ -76,12 +76,19 @@ export default class VoiceRecorder {
         // nút chống-nhiễu quan trọng nhất: ho/cộp/va chạm chỉ kéo 150-250ms nên
         // không thể đạt 7 khung (~600ms), còn một câu nói thì vượt thừa.
         this.speechFrames = opts.speechFrames || num('vadframes', 8);
-        this.warmupMs = opts.warmupMs || 400;     // để nền kịp học mức echo của TTS
+        // Lúc AI ĐANG ĐỌC dùng số khung khác (nhánh Gemini Live: ít hơn -> tạm dừng AI
+        // sớm hơn; báo nhầm thì Gemini không xác nhận được lời thật, AI đọc tiếp).
+        this.speechFramesTts = opts.speechFramesTts || 0;
+        // Mức ồn nền GIỮ qua các lượt (P2): chỉ lần mở mic đầu tiên mới phải chờ học nền.
+        // Trước đây mỗi lượt đặt lại nền + chờ 400ms; mở mic đúng lúc người dùng đang
+        // nói thì khung đầu lấy luôn giọng họ làm nền -> ngưỡng = giọng x4.5, không bao
+        // giờ vượt được, phải đợi ~2s nền tụt xuống mới nghe thấy.
+        this.warmupMs = this._floor == null ? (opts.warmupMs || 400) : 0;
         this._speechStarted = false;
         this._silenceStart = null;
         this._autoStopped = false;
         this._hits = 0;
-        this._floor = null;
+        // this._floor giữ nguyên từ lượt trước (xem warmupMs ở trên).
         this._voiceOn = false;
         this._peak = 0;
         this._quietSince = null;
@@ -114,8 +121,29 @@ export default class VoiceRecorder {
             this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
             
             this.processor.onaudioprocess = (e) => {
-                if (!this.recording) return;
                 const data = e.inputBuffer.getChannelData(0);
+                // MỨC TIẾNG VỌNG: học mức TO NHẤT của tiếng AI lọt vào mic — kể cả lúc chưa
+                // mở nghe (1s khoá đầu mỗi câu AI đọc). Lúc AI đang nói, tiếng người dùng
+                // phải to hơn mức này mới tính. Trước đây 400ms làm nóng mỗi lần mở mic
+                // vô tình làm việc này (mic mở giữa lúc AI đang đọc); bỏ khoá 4s + giữ
+                // nền qua lượt thì phải học riêng. Không có AEC (giọng trình duyệt trên
+                // Android) thì mức này cao, có AEC thì thấp -> tự thích nghi theo máy.
+                let ttsNow = false;
+                if (this.isTtsPlaying) { try { ttsNow = !!this.isTtsPlaying(); } catch (err) {} }
+                if (ttsNow) {
+                    let sq = 0;
+                    for (let i = 0; i < data.length; i++) sq += data[i] * data[i];
+                    const r = Math.sqrt(sq / data.length);
+                    const peak = this._echoPeak || 0;
+                    // Đang nghe thì KHÔNG được học từ khung to hơn hẳn mức vọng đã biết: đó có
+                    // thể là người dùng vừa lên tiếng -> học vào là ngưỡng nâng lên đúng bằng
+                    // giọng họ, không bao giờ bắt được. Lúc chưa nghe / đang làm nóng thì học hết.
+                    const warmingNow = performance.now() - this._t0 < this.warmupMs;
+                    if (!this.recording || warmingNow || (!this._speechStarted && !this._hits && r <= peak * 1.25)) {
+                        this._echoPeak = Math.max(peak * 0.995, r);
+                    }
+                }
+                if (!this.recording) return;
                 this.chunks.push(new Float32Array(data));
 
                 // Khi CHƯA xác nhận là tiếng nói, chỉ giữ lại một đoạn "tiền ghi" ngắn
@@ -144,8 +172,11 @@ export default class VoiceRecorder {
                     let speaking = false;
                     if (this.isTtsPlaying) { try { speaking = !!this.isTtsPlaying(); } catch (err) {} }
                     const guard = speaking ? this.ttsGuardMult : 1;
-                    const enterTh = Math.max(this.speechThreshold,
-                        this._floor == null ? 0 : this._floor * this.floorMult) * guard;
+                    const baseTh = Math.max(this.speechThreshold,
+                        this._floor == null ? 0 : this._floor * this.floorMult);
+                    const enterTh = speaking
+                        ? Math.max(baseTh * guard, (this._echoPeak || 0) * 1.25)
+                        : baseTh;
                     // HYSTERESIS: vào thì khó, GIỮ thì dễ. Chỉ có một ngưỡng duy nhất thì
                     // giọng dao động quanh ngưỡng sẽ làm bộ đếm cộng-trừ quanh 0, không
                     // bao giờ đạt đủ khung -> phải chờ hết noSpeechMs rồi mở lại, lặp vô
@@ -174,13 +205,13 @@ export default class VoiceRecorder {
                     // Học nền theo ngưỡng VÀO (enterTh), không theo ngưỡng giữ — nếu dùng
                     // ngưỡng giữ thì lúc đang gom khung sẽ có khung ồn bị tính là "im" và
                     // kéo nền lên sai.
-                    if (!this._speechStarted && rms <= enterTh) {
+                    if (!this._speechStarted && !speaking && rms <= enterTh) {
                         if (this._floor == null) this._floor = rms;
                         else {
                             const a = rms > this._floor ? 0.02 : 0.10;
                             this._floor = this._floor * (1 - a) + rms * a;
                         }
-                    } else if (this._floor == null) {
+                    } else if (this._floor == null && !speaking) {   // đang AI đọc: đừng lấy tiếng vọng làm nền
                         this._floor = rms;
                     }
 
@@ -209,7 +240,8 @@ export default class VoiceRecorder {
                         this._silenceStart = null;
                         // Cần đủ số khung LIÊN TIẾP mới coi là nói, để tiếng ho/cộp/va
                         // chạm không cắt mất lời AI đang đọc.
-                        if (!this._speechStarted && this._hits >= this.speechFrames) {
+                        const need = speaking && this.speechFramesTts ? this.speechFramesTts : this.speechFrames;
+                        if (!this._speechStarted && this._hits >= need) {
                             this._speechStarted = true;
                             if (this.onSpeechStart) {
                                 try { this.onSpeechStart(); } catch (err) {}
@@ -261,6 +293,12 @@ export default class VoiceRecorder {
 
         this.chunks = [];
         this.recording = true;
+    }
+
+    /** Độ dài đoạn tiền ghi (ms) được gửi kèm lúc VAD xác nhận tiếng nói. */
+    get preRollMs() {
+        const rate = (this.audioContext && this.audioContext.sampleRate) || 48000;
+        return ((this.speechFrames + 4) * 4096 / rate) * 1000;
     }
 
     /** VAD đã từng xác nhận có tiếng nói trong lượt này chưa. */

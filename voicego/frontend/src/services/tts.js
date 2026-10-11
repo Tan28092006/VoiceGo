@@ -7,9 +7,10 @@ import { initSharedAudioContext } from './voiceRecorder';
 // can still play. (A fresh `new Audio()` each time would be blocked on mobile.)
 let el = null;
 let genToken = 0;   // only the LATEST speak() is allowed to play (no overlap)
-let curText = '';   // câu AI đang đọc — nhánh Gemini Live dùng để lọc tiếng vọng khi chen ngang
-let softPaused = false;
+let curText = '';   // câu AI đang đọc
+let pausedKind = null;   // pauseSpeech() đã tạm dừng cái gì: 'audio' | 'synth' | null
 let synthPrimed = false;
+let synth = null;   // lượt speechSynthesis đang đọc (xem synthSpeak)
 
 // ── Giọng đọc: 'browser' (mặc định) = speechSynthesis của trình duyệt (Chrome: Google
 // Tiếng Việt, Edge: Microsoft HoaiMy) — ra tiếng gần như NGAY vì không đi qua server;
@@ -18,9 +19,6 @@ let synthPrimed = false;
 let ttsEngine = 'browser';
 export function setTtsEngine(v) { ttsEngine = v === 'edge' ? 'edge' : 'browser'; }
 
-// Android Chrome: speechSynthesis.pause() không chạy (giọng vẫn đọc tiếp hoặc bị huỷ
-// hẳn) -> không tạm dừng được, xem pauseSpeech().
-const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 let viVoice = null;
 function pickViVoice() {
   const ss = typeof window !== 'undefined' && window.speechSynthesis;
@@ -35,6 +33,59 @@ if (typeof window !== 'undefined' && window.speechSynthesis) {
   try { window.speechSynthesis.addEventListener('voiceschanged', pickViVoice); } catch (e) {}
 }
 
+// ── Dòng thời gian lời AI đã phát ra loa ────────────────────────────────────────
+// Để LỌC TIẾNG VỌNG THEO THỜI GIAN: tiếng AI lọt vào mic chỉ có thể là mấy từ AI
+// vừa phát ra quanh lúc đó, nên so chữ Gemini nghe được với đúng những từ ấy (xem
+// spokenWordsBetween + cancelEcho trong liveStt.js) — thay cho bộ khử vọng của mic,
+// thứ mà giọng trình duyệt trên Android nhiều khi không đi qua.
+// Mỗi đoạn = một lần loa đọc liền một mạch. Giọng trình duyệt bắn sự kiện boundary
+// từng từ -> có GIỜ THẬT của từng từ (marks); không có (Edge, engine không hỗ trợ)
+// thì nội suy theo số ký tự với tốc độ đọc tự hiệu chỉnh.
+const segs = [];
+let curSeg = null;
+const msPerChar = { browser: 75, edge: 70 };   // tự hiệu chỉnh theo máy sau mỗi câu đọc trọn
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+function segStart(text, engine) {
+  segEnd(false);
+  curSeg = { start: now(), end: null, text: String(text || ''), engine, natural: false, pausedAt: null, marks: [] };
+  segs.push(curSeg);
+  while (segs.length > 30) segs.shift();
+}
+function segEnd(natural) {
+  const s = curSeg;
+  if (!s) return;
+  curSeg = null;
+  s.end = now();
+  if (natural && s.text.length > 8) {
+    s.natural = true;
+    const r = (s.end - s.start) / s.text.length;
+    if (r > 20 && r < 300) msPerChar[s.engine] = msPerChar[s.engine] * 0.7 + r * 0.3;
+  }
+}
+
+/** Các từ AI ĐÃ phát ra loa trong khoảng [t0, t1] (mốc performance.now()). */
+export function spokenWordsBetween(t0, t1) {
+  const out = [];
+  for (const s of segs) {
+    if (s.start > t1 || (s.end != null && s.end < t0)) continue;
+    const dur = s.natural ? s.end - s.start : s.text.length * msPerChar[s.engine];
+    const stopAt = s.end != null ? s.end : (s.pausedAt != null ? s.pausedAt : Infinity);
+    const re = /\S+/g;
+    let m;
+    while ((m = re.exec(s.text))) {
+      // Có mốc boundary ở/trước từ này -> tính từ mốc thật gần nhất; không thì nội suy.
+      let mk = null;
+      for (const x of s.marks) { if (x[0] <= m.index) mk = x; else break; }
+      const t = mk ? mk[1] + (m.index - mk[0]) * msPerChar[s.engine]
+        : s.start + (m.index / Math.max(1, s.text.length)) * dur;
+      if (t > stopAt || t > t1) break;
+      if (t >= t0) out.push(m[0]);
+    }
+  }
+  return out;
+}
+
 function audioEl() {
   if (!el) el = new Audio();
   return el;
@@ -46,7 +97,7 @@ function audioEl() {
 export function isSpeaking() {
   if (el && !el.paused && !el.ended) return true;
   const ss = window.speechSynthesis;
-  return !!ss && ss.speaking && !ss.paused;
+  return !!ss && ss.speaking && !ss.paused && !!synth && !synth.paused;
 }
 
 export function currentSpeechText() { return curText; }
@@ -55,25 +106,49 @@ export function currentSpeechText() { return curText; }
  * Chen ngang "mềm" (nhánh Gemini Live): TẠM DỪNG thay vì stop, để nếu hoá ra báo
  * nhầm (ho, tiếng xe, tiếng AI vọng lại) thì đọc tiếp đúng chỗ đang đọc. Trả true
  * nếu thật sự có tiếng đang phát để dừng.
+ *
+ * PHẢI im tiếng AI ngay: đo trên Gemini thật, khi tiếng AI còn chạy song song thì
+ * lời người dùng có lúc bị nuốt mất hẳn khỏi bản chép -> không bao giờ xác nhận
+ * được là chen ngang.
  */
 export function pauseSpeech() {
-  if (isSpeaking()) { try { el.pause(); softPaused = true; return true; } catch (e) {} }
-  if (window.speechSynthesis?.speaking && !window.speechSynthesis.paused) {
-    // Android không pause được: cứ để AI đọc tiếp, nhưng vẫn báo "đã tạm dừng" để bên
-    // gọi chờ Gemini xác nhận lời thật rồi mới stop hẳn — tiếng AI vọng vào mic bị
-    // lọc nhờ so với câu đang đọc, báo nhầm thì AI chưa từng bị ngắt.
-    if (IS_ANDROID) { softPaused = true; return true; }
-    try { window.speechSynthesis.pause(); softPaused = true; return true; } catch (e) {}
+  if (el && !el.paused && !el.ended) {
+    try {
+      el.pause();
+      pausedKind = 'audio';
+      if (curSeg) curSeg.pausedAt = now();
+      return true;
+    } catch (e) {}
+  }
+  // speechSynthesis.pause() không tin được (Android: không chạy; giọng Google online
+  // trên Chrome: hay không resume). Nên tự làm: huỷ, nhớ đang đọc tới từ nào (sự kiện
+  // boundary; không có thì đầu câu), lúc resume đọc lại từ đúng chỗ đó.
+  if (synth && !synth.paused && !synth.settled) {
+    synth.paused = true;
+    synth.gen++;                     // utterance cũ bắn onerror('interrupted') -> bỏ qua
+    clearTimeout(synth.guard);
+    segEnd(false);
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+    pausedKind = 'synth';
+    return true;
   }
   return false;
 }
 
 /** Đọc tiếp sau pauseSpeech() (chỉ khi chưa bị stop()/speak() mới thay thế). */
 export function resumeSpeech() {
-  if (!softPaused) return;
-  softPaused = false;
-  if (el && el.paused && !el.ended && el.currentTime > 0) { el.play().catch(() => {}); return; }
-  if (window.speechSynthesis?.paused) { try { window.speechSynthesis.resume(); } catch (e) {} }
+  const kind = pausedKind;
+  pausedKind = null;
+  if (kind === 'audio' && el && el.paused && !el.ended && el.currentTime > 0) {
+    if (curSeg && curSeg.pausedAt != null) { curSeg.start += now() - curSeg.pausedAt; curSeg.pausedAt = null; }
+    el.play().catch(() => {});
+    return;
+  }
+  if (kind === 'synth' && synth && synth.paused && !synth.settled) {
+    synth.paused = false;
+    synthQueue(synth, synth.idx, synth.charAt);
+    synth.armGuard();
+  }
 }
 
 // Call from a user gesture (login / tap) to unlock audio + speech on mobile.
@@ -112,13 +187,15 @@ export async function speak(text, opts = {}) {
   // new load request"). Trên máy tính điều này làm câu trả lời im lặng ngẫu nhiên.
   // Chỉ cần vô hiệu lượt cũ + tạm dừng là đủ.
   const my = ++genToken;
-  softPaused = false;
+  pausedKind = null;
   if (!text) return;
   curText = text;
+  segEnd(false);
   const a = audioEl();
   try { a.pause(); } catch (e) {}
   const ss = window.speechSynthesis;
   const synthBusy = !!ss && (ss.speaking || ss.pending);
+  endSynth();
   if (ss) { try { ss.cancel(); } catch (e) {} }
 
   if (ttsEngine === 'browser' && (viVoice || pickViVoice())) {
@@ -158,10 +235,11 @@ export async function speak(text, opts = {}) {
 
     a.onplaying = () => {
       if (my !== genToken) return;          // đã bị speak() mới thay thế
+      if (!started) segStart(text, 'edge');
       started = true;
       try { opts.onStart?.(); } catch (e) {}
     };
-    a.onended = done;
+    a.onended = () => { if (my === genToken) segEnd(true); done(); };
     a.onerror = () => {
       // stop() làm removeAttribute('src') + load(), việc đó bắn một sự kiện 'error'
       // KHÔNG ĐỒNG BỘ (empty src). Nó tới sau khi speak() mới đã gắn handler + gán
@@ -217,58 +295,104 @@ function splitForSynth(text) {
   return out;
 }
 
+/** Kết thúc lượt speechSynthesis hiện tại (bị stop()/speak() mới thay): trả kết quả cho bên đang chờ. */
+function endSynth() {
+  const st = synth;
+  if (!st) return;
+  st.gen++;
+  st.finish(true);
+}
+
 /**
  * Đọc bằng speechSynthesis. Resolve(true) khi đọc xong (hoặc bị stop()/speak() mới
  * cắt ngang), resolve(false) khi KHÔNG ra được tiếng nào -> bên gọi tự đọc bằng Edge.
  * Luôn resolve: Chrome thỉnh thoảng không bắn onend, mà chuỗi đọc PIN đang
  * `.then(() => speak(...))` -> không có hạn chờ là treo luôn, khách không nghe PIN.
+ * Tạm dừng/đọc tiếp KHÔNG làm promise này kết thúc (xem pauseSpeech).
  */
 function synthSpeak(text, my, onStart) {
   return new Promise((resolve) => {
     const ss = window.speechSynthesis;
     const parts = ss ? splitForSynth(text) : [];
     if (!parts.length) { resolve(!!ss); return; }
-    let settled = false;
-    let started = false;
-    let guard = null;
-    let noStart = null;
-    const finish = (ok) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(guard); clearTimeout(noStart);
+    const st = {
+      parts, idx: 0, charAt: 0, my, onStart, gen: 0,
+      started: false, settled: false, paused: false, guard: null, noStart: null,
+    };
+    st.finish = (ok) => {
+      if (st.settled) return;
+      st.settled = true;
+      clearTimeout(st.guard); clearTimeout(st.noStart);
+      if (synth === st) synth = null;
       resolve(ok);
     };
-    guard = setTimeout(() => finish(true), 4000 + String(text).length * 120);
+    st.armGuard = () => {
+      clearTimeout(st.guard);
+      const rest = st.parts.slice(st.idx).join(' ').length - st.charAt;
+      st.guard = setTimeout(() => st.finish(true), 4000 + Math.max(0, rest) * 120);
+    };
+    st.armGuard();
     // Không ra tiếng sau 2.5s (speak() bị nuốt, engine treo) -> huỷ, cho bên gọi đọc Edge.
-    noStart = setTimeout(() => {
-      if (started || settled) return;
-      finish(false);   // TRƯỚC cancel(): cancel bắn onerror('interrupted') -> sẽ thành "đã đọc xong"
+    st.noStart = setTimeout(() => {
+      if (st.started || st.settled) return;
+      st.gen++;
+      st.finish(false);   // TRƯỚC cancel(): cancel bắn onerror('interrupted') -> sẽ thành "đã đọc xong"
       try { ss.cancel(); } catch (e) {}
     }, 2500);
-    const voice = viVoice || pickViVoice();
-    parts.forEach((p, i) => {
-      const u = new SpeechSynthesisUtterance(p);
-      u.lang = 'vi-VN';
-      if (voice) u.voice = voice;
-      u.rate = 1.0;
-      u.onstart = () => {
-        if (started) return;
-        started = true;
-        clearTimeout(noStart);
-        if (my === genToken) { try { onStart?.(); } catch (e) {} }
-      };
-      u.onend = () => { if (i === parts.length - 1) finish(true); };
-      // interrupted/canceled = bị stop()/speak() mới cắt -> coi như xong, không đọc bù.
-      u.onerror = (e) => finish(started || e.error === 'interrupted' || e.error === 'canceled');
-      ss.speak(u);
-    });
+    synth = st;
+    synthQueue(st, 0, 0);
   });
+}
+
+/** Xếp hàng các câu từ câu `idx`, ký tự `charAt` trở đi (charAt > 0 khi đọc tiếp sau tạm dừng). */
+function synthQueue(st, idx, charAt) {
+  const ss = window.speechSynthesis;
+  const gen = ++st.gen;
+  const voice = viVoice || pickViVoice();
+  for (let i = idx; i < st.parts.length; i++) {
+    const base = i === idx ? charAt : 0;
+    const text = st.parts[i].slice(base);
+    if (!text.trim()) { if (i === st.parts.length - 1) st.finish(true); continue; }
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'vi-VN';
+    if (voice) u.voice = voice;
+    u.rate = 1.0;
+    u.onstart = () => {
+      if (gen !== st.gen || st.settled) return;
+      st.idx = i; st.charAt = base;
+      segStart(text, 'browser');
+      if (!st.started) {
+        st.started = true;
+        clearTimeout(st.noStart);
+        if (st.my === genToken) { try { st.onStart?.(); } catch (e) {} }
+      }
+    };
+    // Nhớ đang đọc tới từ nào -> tạm dừng xong đọc tiếp đúng từ đó, không đọc lại cả câu.
+    u.onboundary = (e) => {
+      if (gen !== st.gen || (e.name && e.name !== 'word')) return;
+      st.charAt = base + (e.charIndex || 0);
+      if (curSeg) curSeg.marks.push([e.charIndex || 0, now()]);   // giờ thật của từ này
+    };
+    u.onend = () => {
+      if (gen !== st.gen || st.settled) return;
+      segEnd(true);
+      if (i === st.parts.length - 1) st.finish(true);
+    };
+    // interrupted/canceled = bị stop()/speak() mới cắt -> coi như xong, không đọc bù.
+    u.onerror = (e) => {
+      if (gen !== st.gen) return;
+      segEnd(false);
+      st.finish(st.started || e.error === 'interrupted' || e.error === 'canceled');
+    };
+    ss.speak(u);
+  }
 }
 
 export function stop() {
   console.log('[TTS] stop() called. Halting audio playback.');
   genToken++;   // invalidate any in-flight speak()
-  softPaused = false;
+  pausedKind = null;
+  segEnd(false);
   if (el) {
     try {
       // CHỈ pause. Trước đây còn removeAttribute('src') + load() để cắt hẳn kết nối
@@ -280,5 +404,6 @@ export function stop() {
       el.currentTime = 0;
     } catch (e) {}
   }
+  endSynth();
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 }

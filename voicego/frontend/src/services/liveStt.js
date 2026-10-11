@@ -292,56 +292,105 @@ export function silenceMsFor(text) {
   return 800;
 }
 
-// Phải trùng LIÊN TIẾP từng này từ với câu AI đang đọc mới coi là tiếng vọng. Thấp
-// hơn thì nhầm câu trả lời thật: AI hỏi "xe máy hay ô tô?", người dùng đáp "ô tô
-// nhé" / "đi xe máy" — đúng là lặp lại chữ của AI. Tiếng vọng thật lọt vào ~950ms
-// tiền ghi thường dài 4-5 từ. Thà để sót chút tiếng vọng (agent vẫn hiểu) còn hơn
-// xoá mất lời người dùng.
-const ECHO_MIN_WORDS = 4;
+// ── KHỬ TIẾNG VỌNG THEO THỜI GIAN ───────────────────────────────────────────────
+// Tiếng AI lọt vào mic chỉ có thể là mấy từ AI VỪA phát ra loa quanh lượt nói này
+// (tts.js: spokenWordsBetween). Nên khớp chữ Gemini nghe được với ĐÚNG những từ đó
+// rồi gỡ ra, phần còn lại mới là lời người dùng. Đo trên Gemini thật: tiếng vọng
+// to thì Gemini chép nguyên câu AI rồi nối lời người dùng phía sau; tiếng vọng lẫn
+// ở bất kỳ đâu chứ không chỉ ở đầu.
+//  - So sau khi BỎ DẤU ("mười" ~ "mươi") và coi mọi cụm SỐ là một: Gemini viết
+//    "ba mươi nghìn" thành "30.000", "năm phút" thành "5 phút".
+//  - Chỉ gỡ những đoạn trùng >=3 từ liên tiếp: tiếng vọng là cả chuỗi từ liền nhau;
+//    người dùng đáp "ô tô" ngay sau khi AI hỏi "...hay ô tô?" chỉ trùng 2 từ -> giữ.
+const NUM_WORDS = new Set(['một', 'hai', 'ba', 'bốn', 'tư', 'năm', 'lăm', 'sáu', 'bảy', 'tám',
+  'chín', 'mười', 'mươi', 'mốt', 'trăm', 'nghìn', 'ngàn', 'triệu', 'tỷ', 'tỉ', 'linh', 'lẻ']);
+const FILLERS = new Set(['ừm', 'ờ', 'ơ', 'à', 'hmm', 'ừa', 'um', 'uh']);
+// Một từ đơn lẻ còn sót sau khi gỡ tiếng vọng chỉ được tính là chen ngang nếu là lệnh
+// ngắn hay gặp (so sau khi bỏ dấu): không, dừng/đúng, thôi, huỷ, khoan, chờ, đợi/đổi...
+const COMMANDS = new Set(['khong', 'dung', 'thoi', 'huy', 'khoan', 'cho', 'doi', 'vang', 'u',
+  'co', 'duoc', 'ok', 'okay', 'sai', 'roi', 'stop', 'het']);
+const fold = (w) => w.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
 
-/** Số từ đầu của `text` trùng liên tiếp với một đoạn trong câu AI đang đọc (tiếng vọng). */
-function echoPrefixLen(textWords, ttsWords) {
-  if (!ttsWords.length) return 0;
-  const tts = ` ${ttsWords.join(' ')} `;
-  for (let k = textWords.length; k >= ECHO_MIN_WORDS; k--) {
-    if (tts.includes(` ${textWords.slice(0, k).join(' ')} `)) return k;
-  }
-  return 0;
-}
-
-/** Bỏ phần đầu là tiếng vọng của TTS (dính vào ~950ms tiền ghi lúc chen ngang). */
-export function stripEcho(text, ttsText) {
-  const w = norm(text);
-  const k = echoPrefixLen(w, norm(ttsText));
-  return k ? w.slice(k).join(' ') : String(text || '').trim();
+/** Tách câu thành các "đơn vị" để khớp: mỗi từ một đơn vị, cả cụm số liền nhau gộp một. */
+function units(text) {
+  const out = [];
+  String(text || '').split(/\s+/).filter(Boolean).forEach((raw, ti) => {
+    const w = norm(raw).join(' ');
+    if (!w) return;
+    const isNum = /^\d/.test(w) || NUM_WORDS.has(w);
+    const key = isNum ? '#' : fold(w);
+    const last = out[out.length - 1];
+    if (isNum && last && last.key === '#') { last.tokens.push(ti); return; }
+    out.push({ key, word: w, tokens: [ti] });
+  });
+  return out;
 }
 
 /**
- * Luật LỎNG: chữ nghe được có GIỐNG câu AI đang đọc không (>=70% số từ khớp đúng thứ
- * tự, cho phép Gemini nghe sai vài từ của tiếng vọng qua loa điện thoại). Chỉ dùng
- * để ĐẾM tiếng vọng rồi tự đổi giọng — không dùng để xoá chữ (xoá dùng luật chặt
- * bên dưới), vì người dùng đáp lại bằng chính chữ của AI cũng sẽ khớp luật này.
+ * Gỡ tiếng vọng khỏi `text`, biết `echoWords` là các từ AI đã phát ra loa trong
+ * khoảng thời gian của lượt nói. Trả { text: phần còn lại, removed: số đơn vị đã gỡ,
+ * kept: số từ có nghĩa còn lại (bỏ từ đệm), keptKeys, total }.
  */
-export function looksLikeEcho(text, ttsText) {
-  const w = norm(text);
-  const t = norm(ttsText);
-  if (w.length < 4 || !t.length) return false;   // "đi xe máy" (đáp thật bằng chữ của AI) không tính
-  // Dãy con chung dài nhất (LCS) — câu ngắn (vài chục từ) nên O(n*m) là đủ.
-  let prev = new Array(t.length + 1).fill(0);
-  for (let i = 1; i <= w.length; i++) {
-    const cur = new Array(t.length + 1).fill(0);
-    for (let j = 1; j <= t.length; j++) {
-      cur[j] = w[i - 1] === t[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+export function cancelEcho(text, echoWords) {
+  const raw = String(text || '').split(/\s+/).filter(Boolean);
+  const A = units(text);
+  const B = units((echoWords || []).join(' '));
+  const removedTok = new Set();
+  let removed = 0;
+  if (A.length && B.length) {
+    // LCS rồi lần ngược để lấy các cặp khớp (i trong câu nghe được, j trong lời AI).
+    const n = A.length, m = B.length;
+    const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = 1; i <= n; i++) {
+      for (let j = 1; j <= m; j++) {
+        dp[i][j] = A[i - 1].key === B[j - 1].key ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
     }
-    prev = cur;
+    const pairs = [];
+    for (let i = n, j = m; i > 0 && j > 0;) {
+      if (A[i - 1].key === B[j - 1].key) { pairs.push([i - 1, j - 1]); i--; j--; }
+      else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
+      else j--;
+    }
+    pairs.reverse();
+    // Gom thành đoạn liền nhau, cho phép hụt: tối đa 2 từ bên câu nghe được (Gemini
+    // nghe 1 từ thành 2: "đồng" -> "đô la"), 1 từ bên lời AI (sót một từ). Đoạn >=3 cặp
+    // = tiếng vọng: gỡ luôn cả từ nghe sai kẹp giữa.
+    let run = [];
+    const flush = () => {
+      if (run.length >= 3) {
+        for (let i = run[0][0]; i <= run[run.length - 1][0]; i++) {
+          A[i].tokens.forEach((t) => removedTok.add(t));
+          removed++;
+        }
+      }
+      run = [];
+    };
+    for (const p of pairs) {
+      const prev = run[run.length - 1];
+      if (prev && (p[0] - prev[0] > 3 || p[1] - prev[1] > 2)) flush();
+      run.push(p);
+    }
+    flush();
   }
-  return prev[t.length] / w.length >= 0.7;
+  const keep = A.filter((u) => !u.tokens.some((t) => removedTok.has(t)));
+  const meaningful = keep.filter((u) => !FILLERS.has(u.word));
+  return {
+    text: removed ? raw.filter((_, i) => !removedTok.has(i)).join(' ') : String(text || '').trim(),
+    removed,
+    kept: meaningful.length,
+    keptKeys: meaningful.map((u) => u.key),
+    total: A.length,
+  };
 }
 
-/** Chữ nghe được có phải người dùng nói THẬT (không chỉ là tiếng AI vọng lại)? */
-export function isRealSpeech(text, ttsText) {
-  const w = norm(text);
-  if (!w.length) return false;
-  if (w.length === 1) return !['ừm', 'ờ', 'ơ', 'à', 'hmm'].includes(w[0]); // "không", "huỷ" vẫn tính
-  return echoPrefixLen(w, norm(ttsText)) < w.length;
+/**
+ * Sau khi gỡ tiếng vọng, phần còn lại có đủ để coi là người dùng CHEN NGANG THẬT
+ * không: >=2 từ có nghĩa, hoặc 1 từ khi cả câu chỉ có 1-2 từ ("không", "dừng") hay
+ * là lệnh ngắn. Một từ lẻ sót lại giữa cả tràng tiếng vọng = Gemini nghe sai, bỏ.
+ */
+export function isBargeIn(res) {
+  if (!res || !res.kept) return false;
+  if (res.kept >= 2) return true;
+  return res.total <= 2 || COMMANDS.has(res.keptKeys[0]);
 }
