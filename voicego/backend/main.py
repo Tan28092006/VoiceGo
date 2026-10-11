@@ -145,8 +145,11 @@ def db_response(fn, *args, **kwargs):
 def health():
     # HEAD too: uptime monitors (UptimeRobot, Render) default to HEAD; a GET-only
     # route answers HEAD with 405 and the monitor flags the service as down.
-    # stt_engine = nhánh STT mặc định (env STT_ENGINE); nút trên UI ghi đè theo máy.
-    return {"status": "ok", "service": "voicego", "mongo": mongo_status(),
+    # KHÔNG gọi Mongo ở đây: Render health check + uptime monitor gọi route này liên tục,
+    # và 10 truy vấn Mongo (lần đầu còn kết nối Atlas + tạo index) mất ~2.4s -> lúc Atlas
+    # chậm là deploy "Timed Out" dù server đã chạy. Chi tiết Mongo: /api/db/status.
+    # stt_engine/tts_engine = mặc định của server (env); nút trên UI ghi đè theo máy.
+    return {"status": "ok", "service": "voicego",
             "stt_engine": STT_ENGINE, "gemini_live": bool(GEMINI_API_KEYS),
             "tts_engine": TTS_ENGINE}
 
