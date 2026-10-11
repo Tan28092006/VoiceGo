@@ -338,9 +338,13 @@ if os.path.exists(frontend_dist):
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     def serve_frontend(full_path: str):
         file_path = os.path.join(frontend_dist, full_path)
-        if os.path.isfile(file_path):
+        if os.path.isfile(file_path) and not file_path.endswith("index.html"):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(frontend_dist, "index.html"))
+        # index.html PHẢI hỏi lại server mỗi lần (no-cache): không có header này trình
+        # duyệt tự cache theo Last-Modified, nên sau mỗi lần deploy vẫn chạy bản JS cũ
+        # (file trong /assets có hash trong tên nên cache thoải mái, không sao).
+        return FileResponse(os.path.join(frontend_dist, "index.html"),
+                            headers={"Cache-Control": "no-cache"})
 
 
 # Socket.IO relay (luồng PIN realtime) nhúng cùng service — chạy bằng:
