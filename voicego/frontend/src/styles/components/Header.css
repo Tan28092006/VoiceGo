@@ -37,7 +37,9 @@
 .voice-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;           /* điện thoại hẹp: 3 nút xuống dòng thay vì tràn ngang */
+  gap: 6px 8px;
 }
 
 .back-link {
@@ -62,8 +64,8 @@
   color: var(--color-text-secondary);
 }
 
-/* Cờ chọn nhánh STT (Whisper mặc định / Gemini Live) */
-.stt-toggle {
+/* Cờ chọn nhánh STT (Gemini Live / Whisper) và giọng đọc (trình duyệt / Edge) */
+.engine-toggle {
   font-size: 12px;
   font-weight: 600;
   padding: 2px 10px;
@@ -73,9 +75,9 @@
   color: var(--color-text-secondary);
   cursor: pointer;
 }
-.stt-toggle.live {
+.engine-toggle.live {
   border-color: rgba(66, 133, 244, .5);
   background: rgba(66, 133, 244, .18);
   color: #8ab4f8;
 }
-.stt-toggle:active { transform: scale(0.96); }
+.engine-toggle:active { transform: scale(0.96); }

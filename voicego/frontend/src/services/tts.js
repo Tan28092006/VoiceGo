@@ -9,6 +9,31 @@ let el = null;
 let genToken = 0;   // only the LATEST speak() is allowed to play (no overlap)
 let curText = '';   // câu AI đang đọc — nhánh Gemini Live dùng để lọc tiếng vọng khi chen ngang
 let softPaused = false;
+let synthPrimed = false;
+
+// ── Giọng đọc: 'browser' (mặc định) = speechSynthesis của trình duyệt (Chrome: Google
+// Tiếng Việt, Edge: Microsoft HoaiMy) — ra tiếng gần như NGAY vì không đi qua server;
+// 'edge' = Edge TTS qua backend (~0.9-2.7s mới ra tiếng). Máy không có giọng vi thì
+// nhánh 'browser' tự đọc bằng Edge (đọc tiếng Việt bằng giọng Anh thì nghe không hiểu).
+let ttsEngine = 'browser';
+export function setTtsEngine(v) { ttsEngine = v === 'edge' ? 'edge' : 'browser'; }
+
+// Android Chrome: speechSynthesis.pause() không chạy (giọng vẫn đọc tiếp hoặc bị huỷ
+// hẳn) -> không tạm dừng được, xem pauseSpeech().
+const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+let viVoice = null;
+function pickViVoice() {
+  const ss = typeof window !== 'undefined' && window.speechSynthesis;
+  if (!ss) return null;
+  // Ưu tiên giọng neural online (Edge "Natural"/"Online"), rồi Google, rồi giọng máy.
+  const rank = (v) => (/natural|online/i.test(v.name) ? 0 : /google/i.test(v.name) ? 1 : 2);
+  viVoice = ss.getVoices().filter((v) => /^vi/i.test(v.lang)).sort((a, b) => rank(a) - rank(b))[0] || null;
+  return viVoice;
+}
+if (typeof window !== 'undefined' && window.speechSynthesis) {
+  pickViVoice();   // Chrome nạp danh sách giọng bất đồng bộ -> chọn lại khi có
+  try { window.speechSynthesis.addEventListener('voiceschanged', pickViVoice); } catch (e) {}
+}
 
 function audioEl() {
   if (!el) el = new Audio();
@@ -19,7 +44,9 @@ function audioEl() {
  *  trong lúc đọc, vì mic hứng lại tiếng của chính AI (nhất là máy tính dùng loa
  *  ngoài) và tiếng đó cũng là giọng nói liên tục nên không thể lọc bằng thời lượng. */
 export function isSpeaking() {
-  return !!el && !el.paused && !el.ended;
+  if (el && !el.paused && !el.ended) return true;
+  const ss = window.speechSynthesis;
+  return !!ss && ss.speaking && !ss.paused;
 }
 
 export function currentSpeechText() { return curText; }
@@ -32,6 +59,10 @@ export function currentSpeechText() { return curText; }
 export function pauseSpeech() {
   if (isSpeaking()) { try { el.pause(); softPaused = true; return true; } catch (e) {} }
   if (window.speechSynthesis?.speaking && !window.speechSynthesis.paused) {
+    // Android không pause được: cứ để AI đọc tiếp, nhưng vẫn báo "đã tạm dừng" để bên
+    // gọi chờ Gemini xác nhận lời thật rồi mới stop hẳn — tiếng AI vọng vào mic bị
+    // lọc nhờ so với câu đang đọc, báo nhầm thì AI chưa từng bị ngắt.
+    if (IS_ANDROID) { softPaused = true; return true; }
     try { window.speechSynthesis.pause(); softPaused = true; return true; } catch (e) {}
   }
   return false;
@@ -55,7 +86,18 @@ export function unlockAudio() {
     if (p && p.then) p.then(() => { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; })
                        .catch(() => { a.muted = false; });
   } catch (e) {}
-  if (window.speechSynthesis) { try { window.speechSynthesis.resume(); } catch (e) {} }
+  if (window.speechSynthesis) {
+    try { window.speechSynthesis.resume(); } catch (e) {}
+    // iOS chỉ cho speechSynthesis nói nếu lần đầu nằm trong cú chạm -> nói một câu câm.
+    if (!synthPrimed) {
+      try {
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0;
+        window.speechSynthesis.speak(u);
+        synthPrimed = true;
+      } catch (e) {}
+    }
+  }
 }
 
 /**
@@ -75,7 +117,18 @@ export async function speak(text, opts = {}) {
   curText = text;
   const a = audioEl();
   try { a.pause(); } catch (e) {}
-  if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+  const ss = window.speechSynthesis;
+  const synthBusy = !!ss && (ss.speaking || ss.pending);
+  if (ss) { try { ss.cancel(); } catch (e) {} }
+
+  if (ttsEngine === 'browser' && (viVoice || pickViVoice())) {
+    // Chrome hay nuốt mất speak() gọi NGAY sau cancel() -> chờ một nhịp nếu vừa huỷ.
+    if (synthBusy) await new Promise((r) => setTimeout(r, 60));
+    if (my !== genToken) return;
+    if (await synthSpeak(text, my, opts.onStart)) return;
+    if (my !== genToken) return;
+    console.warn('[TTS] giong trinh duyet khong ra tieng -> doc bang Edge');
+  }
 
   const url = `${BACKEND_URL}/api/voice/tts_stream?text=${encodeURIComponent(text)}`;
 
@@ -100,7 +153,7 @@ export async function speak(text, opts = {}) {
       }
       console.warn('[TTS] khong ra tieng ->', why, '| doc bang giong trinh duyet');
       settled = true;
-      browserSpeak(text).then(resolve);
+      synthSpeak(text, my, opts.onStart).then(() => resolve());
     };
 
     a.onplaying = () => {
@@ -144,17 +197,71 @@ export async function speak(text, opts = {}) {
 }
 
 export function browserSpeak(text) {
+  return synthSpeak(text, genToken, null).then(() => {});
+}
+
+// Chrome tự cắt utterance đọc quá ~15s -> đọc TỪNG CÂU (hàng đợi của speechSynthesis
+// tự nối liền), câu quá dài thì cắt tiếp ở dấu phẩy.
+function splitForSynth(text) {
+  const out = [];
+  for (const s of String(text).split(/(?<=[.!?…])\s+/)) {
+    if (!s.trim()) continue;
+    if (s.length <= 180) { out.push(s); continue; }
+    let cur = '';
+    for (const part of s.split(/(?<=,)\s+/)) {
+      if (cur && (cur.length + part.length + 1) > 180) { out.push(cur); cur = part; }
+      else cur = cur ? `${cur} ${part}` : part;
+    }
+    if (cur) out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * Đọc bằng speechSynthesis. Resolve(true) khi đọc xong (hoặc bị stop()/speak() mới
+ * cắt ngang), resolve(false) khi KHÔNG ra được tiếng nào -> bên gọi tự đọc bằng Edge.
+ * Luôn resolve: Chrome thỉnh thoảng không bắn onend, mà chuỗi đọc PIN đang
+ * `.then(() => speak(...))` -> không có hạn chờ là treo luôn, khách không nghe PIN.
+ */
+function synthSpeak(text, my, onStart) {
   return new Promise((resolve) => {
-    if (!window.speechSynthesis) { resolve(); return; }
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'vi-VN';
-    utter.rate = 1.0;
-    const voices = window.speechSynthesis.getVoices();
-    const viVoice = voices.find(v => v.lang.startsWith('vi'));
-    if (viVoice) utter.voice = viVoice;
-    utter.onend = resolve;
-    utter.onerror = resolve;
-    window.speechSynthesis.speak(utter);
+    const ss = window.speechSynthesis;
+    const parts = ss ? splitForSynth(text) : [];
+    if (!parts.length) { resolve(!!ss); return; }
+    let settled = false;
+    let started = false;
+    let guard = null;
+    let noStart = null;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(guard); clearTimeout(noStart);
+      resolve(ok);
+    };
+    guard = setTimeout(() => finish(true), 4000 + String(text).length * 120);
+    // Không ra tiếng sau 2.5s (speak() bị nuốt, engine treo) -> huỷ, cho bên gọi đọc Edge.
+    noStart = setTimeout(() => {
+      if (started || settled) return;
+      finish(false);   // TRƯỚC cancel(): cancel bắn onerror('interrupted') -> sẽ thành "đã đọc xong"
+      try { ss.cancel(); } catch (e) {}
+    }, 2500);
+    const voice = viVoice || pickViVoice();
+    parts.forEach((p, i) => {
+      const u = new SpeechSynthesisUtterance(p);
+      u.lang = 'vi-VN';
+      if (voice) u.voice = voice;
+      u.rate = 1.0;
+      u.onstart = () => {
+        if (started) return;
+        started = true;
+        clearTimeout(noStart);
+        if (my === genToken) { try { onStart?.(); } catch (e) {} }
+      };
+      u.onend = () => { if (i === parts.length - 1) finish(true); };
+      // interrupted/canceled = bị stop()/speak() mới cắt -> coi như xong, không đọc bù.
+      u.onerror = (e) => finish(started || e.error === 'interrupted' || e.error === 'canceled');
+      ss.speak(u);
+    });
   });
 }
 

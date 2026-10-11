@@ -15,6 +15,18 @@ export function saveSttEngine(v) {
   try { localStorage.setItem(STT_KEY, v); } catch {}
 }
 
+// Giọng đọc, cùng cơ chế: nút trên Header > env TTS_ENGINE > mặc định giọng trình duyệt.
+const TTS_KEY = 'voicego.tts';
+function storedTts() {
+  try {
+    const v = localStorage.getItem(TTS_KEY);
+    return v === 'browser' || v === 'edge' ? v : null;
+  } catch { return null; }
+}
+export function saveTtsEngine(v) {
+  try { localStorage.setItem(TTS_KEY, v); } catch {}
+}
+
 // State shape
 const initialState = {
   appState: 'idle', // idle | listening | destination_set | confirming | booking | trip_live
@@ -43,6 +55,8 @@ const initialState = {
   stage: 'agent',      // màn giữa đang hiện lời ai: 'agent' | 'user' (người dùng đang nói)
   sttEngine: storedStt() || 'gemini-live',   // 'gemini-live' (mặc định) | 'whisper'
   sttEnginePicked: !!storedStt(),        // máy này đã tự chọn -> không theo mặc định server
+  ttsEngine: storedTts() || 'browser',   // 'browser' (mặc định, ra tiếng ngay) | 'edge'
+  ttsEnginePicked: !!storedTts(),
 };
 
 function appReducer(state, action) {
@@ -72,6 +86,7 @@ function appReducer(state, action) {
     case 'SET_AGENT_RESULT': return { ...state, agentResult: action.payload };
     case 'SET_STREAM': return { ...state, agentStream: action.payload, stage: 'agent' };
     case 'SET_STT_ENGINE': return { ...state, sttEngine: action.payload };
+    case 'SET_TTS_ENGINE': return { ...state, ttsEngine: action.payload };
     case 'RESET_TRIP': return {
       ...state,
       appState: 'idle',

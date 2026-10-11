@@ -13,7 +13,7 @@ import os
 import time
 
 from voice import (text_to_speech, stream_text_to_speech, whisper_stt, gemini_live_token,
-                   STT_ENGINE, GEMINI_API_KEYS)
+                   STT_ENGINE, TTS_ENGINE, GEMINI_API_KEYS)
 from geocode import resolve_destination
 from agent import run_agent
 from db import (
@@ -147,7 +147,8 @@ def health():
     # route answers HEAD with 405 and the monitor flags the service as down.
     # stt_engine = nhánh STT mặc định (env STT_ENGINE); nút trên UI ghi đè theo máy.
     return {"status": "ok", "service": "voicego", "mongo": mongo_status(),
-            "stt_engine": STT_ENGINE, "gemini_live": bool(GEMINI_API_KEYS)}
+            "stt_engine": STT_ENGINE, "gemini_live": bool(GEMINI_API_KEYS),
+            "tts_engine": TTS_ENGINE}
 
 
 @app.get("/api/db/status")

@@ -57,6 +57,8 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"            # chỉ dùng cho Wh
 # token (key thật không lộ ra client). Live hỏng thì từng lượt tự lùi về Whisper.
 STT_ENGINE = "whisper" if os.getenv("STT_ENGINE", "").strip().lower() == "whisper" else "gemini-live"
 GEMINI_LIVE_MODEL = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.5-transcribe-live")
+# Giọng đọc mặc định cho máy chưa tự chọn: browser (speechSynthesis, ra tiếng ngay) | edge.
+TTS_ENGINE = "edge" if os.getenv("TTS_ENGINE", "").strip().lower() == "edge" else "browser"
 # Bias nhận dạng về tên riêng hay gặp (thay cho prompt của Whisper). Tối đa 1000 cụm.
 LIVE_VOCAB = [
     "Chợ Bến Thành", "Landmark 81", "Đại học Bách Khoa", "Đại học Công nghệ Thông tin",

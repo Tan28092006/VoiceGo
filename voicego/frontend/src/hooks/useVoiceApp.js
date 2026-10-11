@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import * as api from '../services/api';
 import { speak, stop as stopSpeech, unlockAudio, isSpeaking,
-  pauseSpeech, resumeSpeech, currentSpeechText } from '../services/tts';
+  pauseSpeech, resumeSpeech, currentSpeechText, setTtsEngine } from '../services/tts';
 import VoiceRecorder from '../services/voiceRecorder';
 import { connectSocket, emitPassengerWaiting, disconnectSocket } from '../services/socket';
 import { startBeacon, stopBeacon, setBeaconIntensity } from '../services/beacon';
@@ -52,6 +52,8 @@ export default function useVoiceApp() {
   useEffect(() => { recordingRef.current = state.recording; }, [state.recording]);
   useEffect(() => { messagesRef.current = state.messages; }, [state.messages]);
   useEffect(() => { userRef.current = state.user; }, [state.user]);
+
+  useEffect(() => { setTtsEngine(state.ttsEngine); }, [state.ttsEngine]);
 
   // Bật nhánh Gemini Live -> mở session NGAY (lúc đang đọc lời chào), vì mở mới tốn
   // ~1.3-2s; tắt -> đóng hẳn. Lượt đang nghe dở vẫn đi tiếp theo nhánh lúc nó bắt đầu.
@@ -623,6 +625,10 @@ export default function useVoiceApp() {
       try { health = await api.checkHealth(); online = health?.status === 'ok'; } catch { online = false; }
       if (health?.stt_engine && !state.sttEnginePicked) {
         dispatch({ type: 'SET_STT_ENGINE', payload: health.stt_engine });
+      }
+      if (health?.tts_engine && !state.ttsEnginePicked) {
+        setTtsEngine(health.tts_engine);   // ngay, vì lời chào đọc trước khi effect kịp chạy
+        dispatch({ type: 'SET_TTS_ENGINE', payload: health.tts_engine });
       }
       if (cancelled) return;
       dispatch({ type: 'SET_BOOTING', payload: false });
