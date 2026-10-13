@@ -93,16 +93,43 @@ export default class VoiceRecorder {
         this._peak = 0;
         this._quietSince = null;
         this._t0 = (typeof performance !== "undefined" ? performance.now() : 0);
+        // Lần cuối thấy AI đang đọc. Hạn noSpeechMs tính từ lúc AI IM, không từ lúc mở
+        // mic: mic mở 1s sau khi AI bắt đầu đọc, câu dài (đọc 3 lựa chọn ~15s) làm hết
+        // 9s giữa chừng -> mic đóng/mở lại (450ms điếc), đếm "không nghe thấy gì" oan rồi
+        // báo "Mình chưa nghe rõ" trong khi người dùng còn đang nghe AI nói.
+        this._ttsSeenAt = 0;
+        this.noAudio = false;     // true = mic không trả khung âm thanh nào (xem watchdog)
+        // Trần thời lượng một lượt nói (ms, tính từ lúc VAD xác nhận tiếng nói). ?maxturn=
+        this.maxTurnMs = opts.maxTurnMs || num('maxturn', 20000);
+        this.cappedTurn = false;  // true = lượt này bị chốt vì chạm trần, không phải vì im lặng
+        this._speechAt = 0;
 
         // MUST be created/resumed BEFORE any async 'await' to satisfy iOS Safari user gesture requirements
         if (!sharedAudioContext) {
             sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
-        if (sharedAudioContext.state === 'suspended') {
+        // 'suspended' (chưa có cú chạm) và cả 'interrupted' (iOS Safari sau cuộc gọi /
+        // Siri / chuông báo): không resume thì ScriptProcessor không chạy, mic câm.
+        if (sharedAudioContext.state !== 'running') {
             // Kick off resume immediately in the sync call stack
-            sharedAudioContext.resume().catch(() => {});
+            try { sharedAudioContext.resume().catch(() => {}); } catch (err) {}
         }
         this.audioContext = sharedAudioContext;
+
+        // Track mic đã CHẾT (iOS ngắt khi có cuộc gọi / chuyển tai nghe Bluetooth / hệ
+        // điều hành thu quyền): giữ stream cũ thì ghi im lặng mãi, VAD không bao giờ kêu.
+        // Chỉ xin lại mic khi track đã chết thật (xin lại lúc đang phát loa làm hỏng AEC
+        // trên Android — xem stop()).
+        if (this.stream && typeof this.stream.getAudioTracks === 'function'
+            && !this.stream.getAudioTracks().some((t) => t.readyState === 'live')) {
+            console.warn('[voiceRecorder] track mic da chet -> xin lai micro');
+            try { this.source && this.source.disconnect(); } catch (err) {}
+            try { this.processor && this.processor.disconnect(); } catch (err) {}
+            try { this.gainNode && this.gainNode.disconnect(); } catch (err) {}
+            try { this.stream.getTracks().forEach((t) => t.stop()); } catch (err) {}
+            if (this.processor) this.processor.onaudioprocess = null;
+            this.stream = null;
+        }
 
         if (!this.stream) {
             // AEC BẬT (không được nghe lại chính mình) nhưng NS/AGC TẮT: trên Android
@@ -137,13 +164,33 @@ export default class VoiceRecorder {
                     const peak = this._echoPeak || 0;
                     // Đang nghe thì KHÔNG được học từ khung to hơn hẳn mức vọng đã biết: đó có
                     // thể là người dùng vừa lên tiếng -> học vào là ngưỡng nâng lên đúng bằng
-                    // giọng họ, không bao giờ bắt được. Lúc chưa nghe / đang làm nóng thì học hết.
+                    // giọng họ, không bao giờ bắt được. Lúc chưa nghe / đang làm nóng: xem dưới.
                     const warmingNow = performance.now() - this._t0 < this.warmupMs;
-                    if (!this.recording || warmingNow || (!this._speechStarted && !this._hits && r <= peak * 1.25)) {
+                    const young = (this._echoFrames || 0) < 4;   // chưa biết gì về tiếng vọng: học hết
+                    this._echoFrames = (this._echoFrames || 0) + 1;
+                    // Bộ đếm "to vọt" có rò: +1 mỗi khung to hơn hẳn mức vọng đã biết, -0.5 mỗi
+                    // khung không (giọng AI có nhịp ngắt nên không đòi liên tiếp). Đếm cả lúc nghe.
+                    const above = !young && r > peak * 1.25;
+                    this._aboveRun = above ? (this._aboveRun || 0) + 1 : Math.max(0, (this._aboveRun || 0) - 0.5);
+                    if (this.recording && !warmingNow) {
+                        if (!this._speechStarted && !this._hits && !above) {
+                            this._echoPeak = Math.max(peak * 0.995, r);
+                        }
+                    } else if (!above || this._aboveRun > 6) {
+                        // Khớp mức đã biết, hoặc to lên KÉO DÀI (> ~6 khung ≈ 0.5s tính dồn: tăng
+                        // âm lượng / đưa máy lại gần — tiếng vọng to lên thật) -> học như cũ.
+                        // Ngưỡng 6 từ eval VAD: 12 làm T11 (vọng tăng 3x) báo nhầm 1.8/phút thay vì 1.0.
                         this._echoPeak = Math.max(peak * 0.995, r);
+                    } else {
+                        // CHƯA mở nghe (1s khoá đầu câu AI) mà khung to vọt lên chưa lâu: rất có
+                        // thể là người dùng nói sớm. Trước đây học luôn -> ngưỡng = giọng họ
+                        // x1.25, chen ngang sớm chỉ bắt được 17-25% (eval B3). Giờ chỉ nhích chậm.
+                        this._echoPeak = Math.max(peak * 0.995, peak + (r - peak) * 0.03);
                     }
                 }
                 if (!this.recording) return;
+                this._lastFrameAt = performance.now();
+                if (ttsNow) this._ttsSeenAt = this._lastFrameAt;
                 this.chunks.push(new Float32Array(data));
 
                 // Khi CHƯA xác nhận là tiếng nói, chỉ giữ lại một đoạn "tiền ghi" ngắn
@@ -243,6 +290,7 @@ export default class VoiceRecorder {
                         const need = speaking && this.speechFramesTts ? this.speechFramesTts : this.speechFrames;
                         if (!this._speechStarted && this._hits >= need) {
                             this._speechStarted = true;
+                            this._speechAt = now;
                             if (this.onSpeechStart) {
                                 try { this.onSpeechStart(); } catch (err) {}
                             }
@@ -259,11 +307,21 @@ export default class VoiceRecorder {
                                 this._autoStopped = true;
                                 try { this.onAutoStop(); } catch (err) {}
                             }
-                        } else if (now - this._t0 > this.noSpeechMs) {
+                        } else if (now - Math.max(this._t0, this._ttsSeenAt || 0) > this.noSpeechMs) {
                             // Nothing said at all -> give up so we can re-prompt.
                             this._autoStopped = true;
                             try { this.onAutoStop(); } catch (err) {}
                         }
+                    }
+                    // TRẦN MỖI LƯỢT: ồn liên tục trên ngưỡng (đường phố, xe máy) thì VAD không
+                    // bao giờ thấy im lặng -> lượt không bao giờ kết thúc, "Đang nghe bạn
+                    // nói…" mãi, không gửi đi được. Quá maxTurnMs kể từ lúc bắt đầu nói ->
+                    // chốt luôn theo đường onAutoStop như khi tự thấy im lặng.
+                    if (this._speechStarted && !this._autoStopped && now - this._speechAt > this.maxTurnMs) {
+                        console.warn(`[voiceRecorder] luot noi qua ${this.maxTurnMs}ms -> chot luot`);
+                        this.cappedTurn = true;
+                        this._autoStopped = true;
+                        try { this.onAutoStop(); } catch (err) {}
                     }
                 }
 
@@ -293,6 +351,23 @@ export default class VoiceRecorder {
 
         this.chunks = [];
         this.recording = true;
+
+        // WATCHDOG: AudioContext bị treo (mở mic không có cú chạm, iOS 'interrupted') thì
+        // onaudioprocess KHÔNG chạy -> không có khung nào -> hạn noSpeechMs cũng không
+        // bao giờ tới, mic "Đang nghe…" mãi mà điếc. Sau 3s không có khung nào: đánh dấu
+        // noAudio rồi chốt lượt như "không nghe thấy gì" để bên gọi báo người dùng chạm.
+        clearTimeout(this._watchdog);
+        const t0 = this._t0;
+        this._watchdog = setTimeout(() => {
+            if (!this.recording || this._autoStopped || this._t0 !== t0) return;
+            if ((this._lastFrameAt || -Infinity) >= t0) return;   // có khung về -> VAD tự lo
+            console.warn('[voiceRecorder] mic khong tra am thanh, AudioContext =', this.audioContext && this.audioContext.state);
+            try { this.audioContext.resume().catch(() => {}); } catch (err) {}
+            this.noAudio = true;
+            if (!this.onAutoStop) return;
+            this._autoStopped = true;
+            try { this.onAutoStop(); } catch (err) {}
+        }, 3000);
     }
 
     /** Độ dài đoạn tiền ghi (ms) được gửi kèm lúc VAD xác nhận tiếng nói. */
@@ -318,6 +393,7 @@ export default class VoiceRecorder {
 
     stop() {
         this.recording = false;
+        clearTimeout(this._watchdog);
         if (this._voiceOn) {                   // tắt đèn báo khi ngừng thu
             this._voiceOn = false;
             if (this.onVoice) { try { this.onVoice(false); } catch (err) {} }

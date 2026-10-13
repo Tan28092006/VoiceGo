@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run tests/unit",
+    "test:live": "vitest run tests/live",
+    "eval": "vitest run tests/eval"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
@@ -24,6 +27,7 @@
     "autoprefixer": "^10.5.2",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^3.2.7"
   }
 }

@@ -11,6 +11,7 @@ let curText = '';   // câu AI đang đọc
 let pausedKind = null;   // pauseSpeech() đã tạm dừng cái gì: 'audio' | 'synth' | null
 let synthPrimed = false;
 let synth = null;   // lượt speechSynthesis đang đọc (xem synthSpeak)
+let edgeSettle = null;   // trả promise của lượt Edge đang đọc khi bị speak() mới / stop() thay (xem endSynth)
 
 // ── Giọng đọc: 'browser' (mặc định) = speechSynthesis của trình duyệt (Chrome: Google
 // Tiếng Việt, Edge: Microsoft HoaiMy) — ra tiếng gần như NGAY vì không đi qua server;
@@ -198,12 +199,17 @@ export async function speak(text, opts = {}) {
   endSynth();
   if (ss) { try { ss.cancel(); } catch (e) {} }
 
+  // Giọng trình duyệt ĐÃ thử và không ra tiếng trong lần speak() này -> nếu Edge cũng
+  // hỏng thì KHÔNG thử lại giọng trình duyệt: gần như chắc lại im thêm 2.5s (tổng im
+  // 2.5 + 10 + 2.5s). Trả luôn để cuộc hội thoại đi tiếp.
+  let synthFailed = false;
   if (ttsEngine === 'browser' && (viVoice || pickViVoice())) {
     // Chrome hay nuốt mất speak() gọi NGAY sau cancel() -> chờ một nhịp nếu vừa huỷ.
     if (synthBusy) await new Promise((r) => setTimeout(r, 60));
     if (my !== genToken) return;
     if (await synthSpeak(text, my, opts.onStart)) return;
     if (my !== genToken) return;
+    synthFailed = true;
     console.warn('[TTS] giong trinh duyet khong ra tieng -> doc bang Edge');
   }
 
@@ -213,7 +219,38 @@ export async function speak(text, opts = {}) {
     if (my !== genToken) { resolve(); return; }
     let settled = false;
     let started = false;      // loa đã ra tiếng cho lượt này chưa
-    const done = () => { if (!settled) { settled = true; resolve(); } };
+    let noStartT = null, guardT = null;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(noStartT); clearTimeout(guardT);
+      if (edgeSettle === done) edgeSettle = null;
+      resolve();
+    };
+    // speak() mới / stop() phải TRẢ lượt này (như nhánh giọng trình duyệt): trước đây
+    // promise treo vĩnh viễn -> `await speak(m)` trong _send giữ busy mãi, chuỗi đọc
+    // PIN `.then(() => speak(PIN))` không bao giờ chạy (xem endSynth).
+    edgeSettle = done;
+    // Không ra tiếng sau 10s (mạng treo, stream không về) -> đọc bằng giọng trình duyệt
+    // thay vì treo. pause() trước để stream về muộn không đọc chồng lên.
+    noStartT = setTimeout(() => {
+      if (started || settled || my !== genToken) return;
+      try { a.pause(); } catch (e) {}
+      fallback('khong ra tieng sau 10s');
+    }, 10000);
+    // Đã ra tiếng nhưng không bao giờ bắn ended/error (stream đứt lặng lẽ) -> coi như
+    // xong sau hạn theo độ dài câu. Đang tạm dừng chờ xác nhận chen ngang thì gia hạn:
+    // tạm dừng KHÔNG được làm speak() kết thúc.
+    const guard = () => {
+      if (settled || my !== genToken) return;
+      if (pausedKind === 'audio') { guardT = setTimeout(guard, 3000); return; }
+      console.warn('[TTS] Edge khong bao ket thuc -> coi nhu da doc xong');
+      // pause luôn: <audio> kẹt ở trạng thái "đang phát" thì isSpeaking() true mãi ->
+      // VAD giữ ngưỡng chống vọng cao mãi, người dùng nói bình thường không ăn.
+      try { a.pause(); } catch (e) {}
+      if (curSeg && curSeg.engine === 'edge') segEnd(false);
+      done();
+    };
     // Không đọc được bằng file thì phải đọc bằng giọng trình duyệt, KHÔNG được coi
     // như đã đọc xong: bản trước nuốt lỗi play() rồi resolve luôn, nên lỗi biểu hiện
     // ra ngoài đúng kiểu "im lặng, không báo gì".
@@ -228,15 +265,24 @@ export async function speak(text, opts = {}) {
         done();
         return;
       }
+      if (synthFailed) {
+        console.warn('[TTS] khong ra tieng ->', why, '| giong trinh duyet cung vua hong -> bo cau nay');
+        try { a.pause(); } catch (e) {}
+        done();
+        return;
+      }
       console.warn('[TTS] khong ra tieng ->', why, '| doc bang giong trinh duyet');
       settled = true;
       synthSpeak(text, my, opts.onStart).then(() => resolve());
     };
 
     a.onplaying = () => {
-      if (my !== genToken) return;          // đã bị speak() mới thay thế
-      if (!started) segStart(text, 'edge');
+      if (my !== genToken || settled) return;   // đã bị thay thế / đã lùi sang giọng trình duyệt
+      if (started) return;      // 'playing' bắn lại sau mỗi lần đọc tiếp (resumeSpeech): onStart chỉ một lần
       started = true;
+      segStart(text, 'edge');
+      clearTimeout(noStartT);
+      guardT = setTimeout(guard, 6000 + text.length * 120);
       try { opts.onStart?.(); } catch (e) {}
     };
     a.onended = () => { if (my === genToken) segEnd(true); done(); };
@@ -295,8 +341,15 @@ function splitForSynth(text) {
   return out;
 }
 
-/** Kết thúc lượt speechSynthesis hiện tại (bị stop()/speak() mới thay): trả kết quả cho bên đang chờ. */
+/**
+ * Kết thúc lượt đang đọc (bị stop()/speak() mới thay): trả kết quả cho bên đang chờ.
+ * Cả hai nhánh: speechSynthesis và Edge (<audio>). Trước đây nhánh Edge không bao
+ * giờ resolve khi bị thay -> ai `await speak()` (đặt xe, chuỗi PIN) treo luôn.
+ */
 function endSynth() {
+  const e = edgeSettle;
+  edgeSettle = null;
+  if (e) e();
   const st = synth;
   if (!st) return;
   st.gen++;
@@ -406,4 +459,96 @@ export function stop() {
   }
   endSynth();
   if (window.speechSynthesis) window.speechSynthesis.cancel();
+  stopSpeechQueue();   // chen ngang / lượt mới -> bỏ cả các câu stream còn đang chờ đọc
+}
+
+// ── Hàng đợi câu: đọc câu trả lời ĐANG STREAM, câu nào tới đọc câu đó ─────────────
+// /api/agent/chat_stream gửi từng câu ngay khi LLM viết xong -> đọc câu 1 trong lúc
+// câu 2 còn đang sinh. Mỗi mục đi qua đúng speak() ở trên (dòng thời gian chống vọng,
+// tạm dừng/đọc tiếp khi chen ngang vẫn chạy y như cũ). speak() mới huỷ speak() cũ, nên
+// chỉ gọi mục kế khi mục trước đã đọc XONG. Lúc mục trước xong mà đã có nhiều câu chờ
+// thì GỘP lại một lần speak(): giọng trình duyệt nối liền gần như không hở, còn giọng
+// Edge mỗi lần speak() là một lần tải (~1s) nên gộp càng ít lần càng tốt.
+//
+//   const q = createSpeechQueue({ onFirstStart })   // một hàng đợi cho MỘT lượt trả lời
+//   q.push(câu) ... q.end()                          // hết câu
+//   q.drained -> Promise<{ interrupted, spoken: [mục đã đọc trọn], partial: 'các từ đã
+//               phát ra của mục đang đọc dở lúc bị ngắt' }>
+//   q.cancel()                                       // tự huỷ (không đụng loa)
+//   q.result                                         // = kết quả drained, có NGAY lúc đóng
+//   q.push(câu, { mustHear: true })                  // câu BẮT BUỘC phải nghe trọn (vd mã PIN):
+//               bị ngắt thì nằm trong result.unheard để bên gọi đọc lại sau lượt của người
+//               dùng — KHÔNG được tính là đã báo.
+//
+// Bị stop() (chen ngang, chạm mic) hoặc một speak() khác chen vào (thông báo tài xế
+// tới...) -> hàng đợi ĐÓNG ngay, các câu chưa đọc bị bỏ, drained trả interrupted=true.
+// Tạm dừng chờ xác nhận chen ngang (pauseSpeech) KHÔNG đóng hàng đợi: speak() chưa xong
+// nên câu kế cứ chờ, báo nhầm thì đọc tiếp như thường.
+let speechQ = null;
+
+export function createSpeechQueue({ onFirstStart } = {}) {
+  if (speechQ) speechQ.cancel();   // hàng đợi của lượt cũ (nếu còn) -> bỏ
+  const q = { closed: false, ended: false, started: false, playing: null, items: [], spoken: [] };
+  const mustOf = (list) => list.filter((x) => x.mustHear).map((x) => x.text);
+  let resolveDrained;
+  q.drained = new Promise((r) => { resolveDrained = r; });
+
+  q.close = (interrupted) => {
+    if (q.closed) return;
+    q.closed = true;
+    const cur = q.playing;
+    const unheard = interrupted ? [...(cur ? mustOf(cur.parts) : []), ...mustOf(q.items)] : [];
+    q.playing = null;
+    q.items = [];
+    if (cur) clearInterval(cur.watch);
+    if (speechQ === q) speechQ = null;
+    // Mục đang đọc dở: chỉ lấy các từ ĐÃ phát ra loa (dòng thời gian của spokenWordsBetween).
+    const partial = interrupted && cur && cur.t0 != null ? spokenWordsBetween(cur.t0, now()).join(' ') : '';
+    q.result = { interrupted, spoken: q.spoken.slice(), partial, unheard };   // đọc được NGAY (đồng bộ), drained thì sau
+    resolveDrained(q.result);
+  };
+
+  const next = () => {
+    if (q.closed || q.playing) return;
+    if (!q.items.length) { if (q.ended) q.close(false); return; }
+    const parts = q.items.splice(0);
+    const text = parts.map((x) => x.text).join(' ');
+    const item = { text, parts, t0: null, tok: 0, watch: null };
+    q.playing = item;
+    const p = speak(text, {
+      onStart: () => {
+        item.t0 = now();
+        if (!q.started) { q.started = true; try { onFirstStart?.(); } catch (e) {} }
+      },
+    });
+    item.tok = genToken;   // phần đồng bộ của speak() đã ++genToken xong
+    const settle = (finished) => {
+      if (q.closed || q.playing !== item) return;
+      if (!finished || genToken !== item.tok) { q.close(true); return; }   // bị speak()/stop() khác thay
+      clearInterval(item.watch);
+      q.playing = null;
+      q.spoken.push(text);
+      next();
+    };
+    // Lưới an toàn: speak() bị thay ngang có thể không bao giờ resolve (nhánh Edge cũ).
+    item.watch = setInterval(() => { if (genToken !== item.tok) settle(false); }, 400);
+    Promise.resolve(p).then(() => settle(true), () => settle(false));
+  };
+
+  q.push = (text, { mustHear = false } = {}) => {
+    const t = String(text || '').trim();
+    if (q.closed || q.ended || !t) return false;
+    q.items.push({ text: t, mustHear: !!mustHear });
+    next();
+    return true;
+  };
+  q.end = () => { if (q.closed) return; q.ended = true; next(); };
+  q.cancel = () => q.close(true);
+  speechQ = q;
+  return q;
+}
+
+/** Đóng hàng đợi câu đang chạy (nếu có). stop() gọi hàm này. */
+export function stopSpeechQueue() {
+  if (speechQ) speechQ.close(true);
 }
