@@ -1,5 +1,7 @@
 """
-agent.py — VoiceGo conversational agent (Groq function-calling, ReAct loop).
+agent.py — VoiceGo conversational agent (DeepSeek function-calling qua SDK tương thích
+OpenAI — xem voice.llm_client; ReAct loop). Hai lối vào: run_agent (/api/agent/chat, trả
+một lần) và run_agent_stream (/api/agent/chat_stream, stream từng câu).
 
 Enforced flow (the system prompt + tool split keep it on-rails):
   1. resolve_destination(query) — find the place + alternatives. NO distance/price
@@ -12,15 +14,16 @@ Enforced flow (the system prompt + tool split keep it on-rails):
 
 Tools are the only source of real data (coords/distance/price), never invented.
 """
+import hashlib
 import json
 import re
+import threading
 import time
 import unicodedata
 
 from voice import llm_client, LLM_MODEL
 from geocode import (resolve_locations, verify_location, geocode_query,
                      _nominatim, _haversine_km)
-from places_db import lookup_all as _lookup_all
 from routing import road_route
 from db import DEMO_PASSENGER_ID, MongoUnavailable, create_ride_request, find_gate_group
 
@@ -127,25 +130,79 @@ def _say_money(text):
     return re.sub(r"(\d{1,3}(?:[.,\s]\d{3})+|\d{4,})", repl, text)
 
 
-def _clean_reply(text):
-    """Strip leaked function-call/JSON + markdown so TTS reads clean Vietnamese."""
-    if not text:
-        return ""
+_SENT_SPLIT = re.compile(r"(?<=[.?!…])\s+")   # ranh giới câu: dấu câu + khoảng trắng
+
+
+def _pre_clean(text):
+    """Phần 'gọt' của _clean_reply (cắt function-call/JSON lọt ra, bỏ markdown, đọc tiền),
+    CHƯA tách câu. Tách riêng để bản stream (ReplySentenceStream) dùng đúng cùng luật."""
     for marker in ("<function", "<tool_call", "<|python_tag|>", "```"):
         i = text.find(marker)
         if i != -1:
             text = text[:i]
     text = text.replace("**", "").replace("__", "").replace("`", "")
     text = re.sub(r"(?m)^\s*#+\s*", "", text)   # markdown headers
-    text = _say_money(text)                      # 107000 -> "107 nghìn" (TTS đọc đúng)
-    text = text.strip()
-    # Collapse consecutive duplicate sentences (gpt-oss đôi khi lặp y nguyên 1 câu).
-    parts = [p for p in re.split(r"(?<=[.?!…])\s+", text) if p.strip()]
+    return _say_money(text)                      # 107000 -> "107 nghìn" (TTS đọc đúng)
+
+
+def _dedupe_sentences(parts):
+    """Bỏ câu lặp liền nhau (gpt-oss đôi khi lặp y nguyên 1 câu)."""
     out = []
     for s in parts:
+        if not s.strip():
+            continue
         if not out or s.strip().lower() != out[-1].strip().lower():
             out.append(s)
+    return out
+
+
+def _clean_reply(text):
+    """Strip leaked function-call/JSON + markdown so TTS reads clean Vietnamese."""
+    if not text:
+        return ""
+    text = _pre_clean(text).strip()
+    out = _dedupe_sentences(_SENT_SPLIT.split(text))
     return (" ".join(out).strip() or text)
+
+
+class ReplySentenceStream:
+    """Tách câu trả lời đang stream thành từng CÂU TRỌN, nhả ra ngay khi câu xong.
+
+    Một câu chỉ được coi là xong khi đã thấy dấu câu + khoảng trắng phía sau (cần ký tự
+    kế tiếp mới biết "8." là hết câu hay là "8.5"). Mỗi lần nhận thêm chữ thì gọt LẠI
+    toàn bộ văn bản bằng đúng _pre_clean/_dedupe_sentences của _clean_reply, nên ghép
+    các câu đã nhả bằng " " luôn ra ĐÚNG chuỗi _clean_reply(toàn văn) — tức đúng câu trả
+    lời mà /api/agent/chat cũ sẽ trả (có test: test_agent_stream.py).
+    """
+
+    def __init__(self):
+        self.raw = ""
+        self.emitted = []
+
+    def _take(self, parts):
+        parts = _dedupe_sentences(parts)
+        n = len(self.emitted)
+        if parts[:n] != self.emitted:
+            # Không bao giờ nên xảy ra (luật gọt chỉ đổi phần đuôi). Có thì thôi không
+            # nhả thêm giữa chừng nữa, để finish() quyết bằng toàn văn.
+            return []
+        new = parts[n:]
+        self.emitted.extend(new)
+        return new
+
+    def feed(self, delta):
+        """Thêm một mẩu chữ từ LLM -> danh sách câu MỚI vừa trọn (có thể rỗng)."""
+        if not delta:
+            return []
+        self.raw += delta
+        parts = _SENT_SPLIT.split(_pre_clean(self.raw).lstrip())
+        return self._take(parts[:-1])          # mẩu cuối có thể chưa hết câu -> giữ lại
+
+    def finish(self):
+        """Hết stream -> (các câu còn lại chưa nhả, reply hoàn chỉnh = _clean_reply)."""
+        reply = _clean_reply(self.raw)
+        rest = self._take(_SENT_SPLIT.split(reply)) if reply else []
+        return rest, reply
 
 TOOLS = [
     {"type": "function", "function": {
@@ -454,13 +511,16 @@ def _apply_place_ui(ui, res):
         ui.pop("quote", None)
 
 
-def _chat_create(client, msgs):
-    """Gọi LLM; auto-retry khi bị 429 rate limit (reset sau vài giây)."""
+def _chat_create(client, msgs, **extra):
+    """Gọi LLM; auto-retry khi bị 429 rate limit (reset sau vài giây).
+    `extra` chuyển thẳng cho SDK (vd stream=True của /api/agent/chat_stream); 429 bị ném
+    ngay lúc tạo request nên retry vẫn đúng cho cả chế độ stream."""
     last = None
     for _ in range(4):
         try:
             return client.chat.completions.create(
                 model=LLM_MODEL, messages=msgs, tools=TOOLS, tool_choice="auto", temperature=0.3,
+                **extra,
             )
         except Exception as e:  # noqa: BLE001
             last = e
@@ -472,6 +532,167 @@ def _chat_create(client, msgs):
                 continue
             raise
     raise last
+
+
+# ── book_ride idempotent theo LƯỢT ──────────────────────────────────────────────
+# Đặt xe là thao tác GHI duy nhất (tạo ride_request + gán tài xế). Một lượt có thể bị
+# chạy lại: stream đứt -> frontend gửi lại cùng lượt sang /api/agent/chat; mất response
+# sau khi server đã đặt xong không có nghĩa là chưa đặt. Chạy lại cùng một lượt phải trả
+# lại ĐÚNG chuyến đã đặt, không tạo chuyến thứ hai. Khoá = lịch sử tới hết tin nhắn user
+# cuối (bỏ system): lượt chạy lại gửi y nguyên phần này, còn một lượt MỚI thì luôn có
+# thêm tin nhắn user mới nên ra khoá khác -> người dùng đặt chuyến mới vẫn bình thường.
+# Bộ nhớ trong process: Render chạy 1 worker (WEB_CONCURRENCY=1); nhiều worker thì cần
+# chuyển sang Mongo (unique index theo khoá này).
+_BOOK_TTL_S = 15 * 60
+_BOOKED = {}               # khoá lượt -> (thời điểm, kết quả book_ride)
+_BOOK_LOCK = threading.Lock()
+
+
+def _turn_key(msgs, vehicle):
+    last_user = max((i for i, m in enumerate(msgs) if m.get("role") == "user"), default=-1)
+    core = [m for m in msgs[:last_user + 1] if m.get("role") != "system"]
+    raw = json.dumps([core, vehicle], ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _book_once(msgs, vehicle, pk):
+    key = _turn_key(msgs, "car" if vehicle == "car" else "bike")
+    with _BOOK_LOCK:                      # giữ khoá cả lúc đặt: 2 lần chạy song song cũng chỉ 1 chuyến
+        now = time.time()
+        for k in [k for k, (t, _) in _BOOKED.items() if now - t > _BOOK_TTL_S]:
+            _BOOKED.pop(k, None)
+        hit = _BOOKED.get(key)
+        if hit:
+            print(f"[book_ride] lượt chạy lại -> trả chuyến đã đặt (rideId={hit[1].get('rideId')})")
+            return dict(hit[1])
+        res = _do_book(msgs, vehicle, pk)
+        if res.get("ok"):
+            _BOOKED[key] = (now, dict(res))
+        return res
+
+
+def _run_tool(call_id, name, arguments, msgs, pk, ui):
+    """Chạy MỘT tool call, cập nhật `ui`, rồi ghi kết quả THẬT vào `msgs` (role=tool,
+    đúng tool_call_id). Dùng chung cho run_agent và run_agent_stream để hai endpoint
+    chạy cùng một bộ tool, cùng guardrail."""
+    try:
+        args = json.loads(arguments or "{}")
+    except json.JSONDecodeError:
+        args = {}
+    if name == "resolve_destination":
+        res = _do_resolve(args.get("query", ""), pk)
+        _apply_place_ui(ui, res)
+    elif name == "select_candidate":
+        res = _do_select(msgs, args.get("index"), pk)
+        _apply_place_ui(ui, res)
+    elif name == "get_quote":
+        res = _do_quote(msgs, args.get("vehicle", "bike"), pk)
+        if res.get("ok"):
+            ui["quote"] = {"name": res["name"], "address": res.get("address"),
+                           "lat": res["lat"], "lng": res["lng"], "distanceKm": res.get("distanceKm"),
+                           "durationMin": res.get("durationMin"), "priceVnd": res.get("priceVnd"),
+                           "vehicle": res.get("vehicle"), "geometry": res.get("geometry")}
+    elif name == "book_ride":
+        res = _book_once(msgs, args.get("vehicle", "bike"), pk)
+        if res.get("ok"):
+            ui["booked"] = res
+    elif name == "end_conversation":
+        res = {"ok": True, "kind": "ended"}
+        ui["ended"] = True
+    else:
+        res = {"ok": False, "error": "unknown_tool"}
+    # Strip bulky geometry from what the LLM sees (save tokens).
+    payload = {k: v for k, v in res.items() if k != "geometry"}
+    msgs.append({"role": "tool", "tool_call_id": call_id,
+                 "content": json.dumps(payload, ensure_ascii=False)})
+    return res
+
+
+# ── Lời đáp MẪU cho kết quả tool "sạch" (bỏ vòng LLM thứ 2) ─────────────────────
+# Báo giá và xác nhận đặt xe phải đọc ĐÚNG con số của tool, nên câu mẫu vừa nhanh hơn
+# (đo thật: vòng LLM viết lời tốn ~0.8-1.5s/lượt) vừa an toàn hơn để LLM tự viết.
+# Chỉ dùng khi kết quả chắc chắn sạch (xem _template_reply); mọi trường hợp khác (nhiều
+# lựa chọn, lỗi, thiếu số liệu, nhiều tool một vòng, tool khác) vẫn để LLM viết như cũ.
+# Người dùng đổi ý ở lượt SAU thì lượt đó vẫn đi qua LLM bình thường.
+# Sửa câu chữ ở ĐÂY. Luật theo SYSTEM_PROMPT: tiền đọc "X nghìn đồng" (_say_money), địa
+# chỉ bỏ "Việt Nam"/mã bưu chính, đủ quãng đường + giá + loại xe rồi mới hỏi xác nhận.
+REPLY_TEMPLATES = {
+    "quote": ("Từ chỗ bạn tới {dest} khoảng {dist}, đi mất chừng {mins} phút, "
+              "giá {price} bằng {vehicle}. Bạn xác nhận đặt xe nhé?"),
+    # Trùng NGUYÊN VĂN câu frontend tự đọc khi có ui.booked (useVoiceApp._send), để lịch
+    # sử ghi đúng điều người dùng đã nghe.
+    "booked": "Đã đặt xe. Đang tìm tài xế cho bạn, vui lòng chờ trong giây lát.",
+}
+_VEHICLE_VI = {"bike": "xe máy", "car": "ô tô"}
+
+
+def _say_km(km):
+    """20.1 -> '20 phẩy 1 ki-lô-mét' (như LLM đang đọc); dưới 1 km -> 'N mét'."""
+    if km < 1:
+        return f"{max(50, int(round(km * 1000 / 50.0)) * 50)} mét"
+    v = round(float(km), 1)
+    whole, tenth = int(v), int(round((v - int(v)) * 10))
+    return f"{whole} ki-lô-mét" if tenth == 0 else f"{whole} phẩy {tenth} ki-lô-mét"
+
+
+def _say_dest(name, address):
+    """TÊN + phần địa chỉ đủ nhận ra (bỏ 'Việt Nam', mã bưu chính, phần trùng tên)."""
+    parts = [p.strip() for p in (address or "").split(",") if p.strip()]
+    parts = [p for p in parts if p.lower() not in ("việt nam", "vietnam") and not re.fullmatch(r"\d{5,6}", p)]
+    if parts and name and parts[0].lower() == name.strip().lower():
+        parts = parts[1:]
+    return ", ".join([name.strip()] + parts[:3]) if name else ", ".join(parts[:4])
+
+
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+
+
+def _quote_is_clean(res, msgs):
+    """Báo giá thành công, đủ số liệu, cho đúng MỘT điểm đã chốt: sau kết quả 'place'
+    gần nhất không có danh sách 'candidates' nào mới hơn (nếu có, quote đang dựa trên
+    điểm cũ -> để LLM xử lý)."""
+    if not (res.get("ok") and res.get("kind") == "quote" and res.get("name")):
+        return False
+    if res.get("vehicle") not in _VEHICLE_VI:
+        return False
+    if not all(_is_num(res.get(k)) for k in ("distanceKm", "durationMin", "priceVnd")):
+        return False
+    for m in reversed(msgs[:-1]):                 # msgs[-1] chính là kết quả quote này
+        if m.get("role") != "tool":
+            continue
+        try:
+            d = json.loads(m.get("content") or "{}")
+        except Exception:  # noqa: BLE001
+            continue
+        if d.get("ok") and d.get("kind") == "candidates":
+            return False
+        if d.get("ok") and d.get("kind") == "place":
+            return True
+    return False
+
+
+def _template_reply(round_calls, msgs):
+    """Lời đáp mẫu cho vòng tool vừa chạy, hoặc None = để LLM viết như cũ.
+
+    `round_calls` = [(tên tool, kết quả)] của ĐÚNG vòng này. Sạch khi vòng chỉ có MỘT
+    tool call và:
+      - get_quote ok, đủ quãng đường/thời gian/giá, một điểm đã chốt;
+      - book_ride ok VÀ đã lưu DB (dbSaved=True). dbSaved=False (Mongo hỏng -> tài xế
+        giả "Nguyễn Văn A") thì KHÔNG dùng mẫu: câu mẫu không được khẳng định nhiều hơn
+        kết quả tool; để LLM đọc dbReason như hôm nay.
+    """
+    if len(round_calls) != 1:
+        return None
+    name, res = round_calls[0]
+    if name == "get_quote" and _quote_is_clean(res, msgs):
+        return REPLY_TEMPLATES["quote"].format(
+            dest=_say_dest(res["name"], res.get("address")), dist=_say_km(res["distanceKm"]),
+            mins=int(round(res["durationMin"])), price=f"{_say_money(str(int(res['priceVnd'])))} đồng",
+            vehicle=_VEHICLE_VI[res["vehicle"]])
+    if name == "book_ride" and res.get("ok") and res.get("kind") == "booked" and res.get("dbSaved") is True:
+        return REPLY_TEMPLATES["booked"]
+    return None
 
 
 def run_agent(messages: list[dict], pickup: dict | None = None) -> dict:
@@ -498,41 +719,200 @@ def run_agent(messages: list[dict], pickup: dict | None = None) -> dict:
                 reply = "Bạn cho tôi biết tên địa điểm cụ thể hơn giúp tôi nhé."
             return {"reply": reply, "messages": msgs, "ui": ui}
 
-        for tc in m.tool_calls:
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            name = tc.function.name
-            if name == "resolve_destination":
-                res = _do_resolve(args.get("query", ""), pk)
-                _apply_place_ui(ui, res)
-            elif name == "select_candidate":
-                res = _do_select(msgs, args.get("index"), pk)
-                _apply_place_ui(ui, res)
-            elif name == "get_quote":
-                res = _do_quote(msgs, args.get("vehicle", "bike"), pk)
-                if res.get("ok"):
-                    ui["quote"] = {"name": res["name"], "address": res.get("address"),
-                                   "lat": res["lat"], "lng": res["lng"], "distanceKm": res.get("distanceKm"),
-                                   "durationMin": res.get("durationMin"), "priceVnd": res.get("priceVnd"),
-                                   "vehicle": res.get("vehicle"), "geometry": res.get("geometry")}
-            elif name == "book_ride":
-                res = _do_book(msgs, args.get("vehicle", "bike"), pk)
-                if res.get("ok"):
-                    ui["booked"] = res
-            elif name == "end_conversation":
-                res = {"ok": True, "kind": "ended"}
-                ui["ended"] = True
-            else:
-                res = {"ok": False, "error": "unknown_tool"}
-            # Strip bulky geometry from what the LLM sees (save tokens).
-            payload = {k: v for k, v in res.items() if k != "geometry"}
-            msgs.append({"role": "tool", "tool_call_id": tc.id,
-                         "content": json.dumps(payload, ensure_ascii=False)})
+        calls = [(tc.function.name, _run_tool(tc.id, tc.function.name, tc.function.arguments, msgs, pk, ui))
+                 for tc in m.tool_calls]
+        reply = _template_reply(calls, msgs)
+        if reply:      # kết quả sạch -> lời mẫu, khỏi chờ vòng LLM viết lời
+            msgs.append({"role": "assistant", "content": reply})
+            return {"reply": reply, "messages": msgs, "ui": ui}
 
       return {"reply": "Xin lỗi, mình chưa xử lý xong. Bạn thử lại giúp nhé.", "messages": msgs, "ui": ui}
     except Exception as exc:  # noqa: BLE001 — incl. persistent rate limit
         print("run_agent error:", exc)
         return {"reply": "Hệ thống đang hơi bận, bạn chờ vài giây rồi nói lại giúp mình nhé.",
                 "messages": messages, "ui": {}}
+
+
+# ── Bản STREAM của một lượt agent (/api/agent/chat_stream) ──────────────────────
+# Cùng vòng tool như run_agent, nhưng vòng LLM CUỐI (vòng sinh lời nói) được stream:
+# mỗi câu trọn được nhả ra ngay để frontend đọc câu 1 trong lúc LLM còn viết câu 2.
+# Đo trên DeepSeek thật: một lượt điển hình = 2 vòng LLM (chọn tool ~0.9s, viết lời
+# ~0.8-1.1s) + tool; chỉ vòng viết lời là có chữ để stream.
+
+_FALLBACK_EMPTY = "Bạn cho tôi biết tên địa điểm cụ thể hơn giúp tôi nhé."
+_WRITE_TOOLS = {"book_ride"}   # tool có tác dụng phụ ngoài hệ thống (tạo chuyến xe)
+# Câu "báo đã đặt xe" — chỉ được nói khi book_ride đã trả kết quả thật trong lượt này.
+_BOOK_CLAIM = re.compile(r"đã đặt|đặt xong|đặt thành công|tài xế", re.IGNORECASE)
+_FALLBACK_ROUNDS = "Xin lỗi, mình chưa xử lý xong. Bạn thử lại giúp nhé."
+_FALLBACK_BUSY = "Hệ thống đang hơi bận, bạn chờ vài giây rồi nói lại giúp mình nhé."
+
+
+def _stream_llm_round(client, msgs):
+    """Một vòng LLM ở chế độ stream. YIELD từng mẩu content (chỉ khi vòng này chưa lộ
+    tool call nào); RETURN (assistant_msg, tool_calls) khi hết stream. assistant_msg có
+    cùng dạng với model_dump() của bản không stream để lịch sử hai endpoint như nhau."""
+    stream = _chat_create(client, msgs, stream=True)
+    content, calls = [], {}
+    try:
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None) or []
+            if not choices or choices[0].delta is None:
+                continue
+            d = choices[0].delta
+            for tc in (getattr(d, "tool_calls", None) or []):
+                idx = tc.index if getattr(tc, "index", None) is not None else len(calls)
+                c = calls.setdefault(idx, {"id": None, "name": "", "arguments": ""})
+                if getattr(tc, "id", None):
+                    c["id"] = tc.id
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    c["name"] += getattr(fn, "name", None) or ""
+                    c["arguments"] += getattr(fn, "arguments", None) or ""
+            if getattr(d, "content", None):
+                content.append(d.content)
+                if not calls:
+                    yield d.content
+    finally:
+        close = getattr(stream, "close", None)   # client ngắt giữa chừng -> thôi nhận token
+        if close:
+            try:
+                close()
+            except Exception:  # noqa: BLE001
+                pass
+    tool_calls = [{"id": c["id"], "type": "function",
+                   "function": {"name": c["name"], "arguments": c["arguments"]}}
+                  for _, c in sorted(calls.items())]
+    msg = {"role": "assistant", "content": "".join(content)}
+    if tool_calls:
+        msg["tool_calls"] = tool_calls
+    return msg, tool_calls
+
+
+def run_agent_stream(messages: list[dict], pickup: dict | None = None, client=None):
+    """Generator các sự kiện (tên, dữ liệu) của MỘT lượt agent:
+
+      ("tools",    {"messages", "ui", "ms"})  sau MỖI vòng tool — mốc lịch sử hợp lệ
+                   (tool_calls đã có kết quả THẬT). Lượt bị ngắt thì frontend dựng lại
+                   lịch sử từ mốc này, không mất kết quả tool đã chạy (vd đã đặt xe).
+      ("sentence", {"i", "text", "ms"})       từng câu trọn của lời đáp, theo thứ tự.
+      ("done",     {"reply", "messages", "ui", "ms", "first_sentence_ms"})
+                   cùng payload với /api/agent/chat (+ số đo).
+
+    Ghép các "sentence" bằng " " = "reply" (khi vòng cuối không có lời dẫn trước tool).
+    `client` chỉ để test truyền LLM giả vào."""
+    t0 = time.perf_counter()
+    ms = lambda: int((time.perf_counter() - t0) * 1000)  # noqa: E731
+    client = client or llm_client()
+    if not client:
+        reply = "Hệ thống agent chưa sẵn sàng (thiếu DEEPSEEK_API_KEY)."
+        yield "sentence", {"i": 0, "text": reply, "ms": ms()}
+        yield "done", {"reply": reply, "messages": messages, "ui": {}, "ms": ms(), "first_sentence_ms": ms()}
+        return
+
+    pk = _pickup(pickup)
+    msgs = list(messages)
+    if not any(m.get("role") == "system" for m in msgs):
+        msgs.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
+    ui = {}
+    ckpt_msgs, ckpt_ui = list(messages), {}   # mốc hợp lệ gần nhất (dùng khi lỗi)
+    sent_at_ckpt = 0                          # số câu đã nhả tính tới mốc đó
+    sent = []                                 # các câu đã nhả cho frontend
+    first_ms = None
+    rounds = 0
+
+    def sentence(text):
+        nonlocal first_ms
+        if first_ms is None:
+            first_ms = ms()
+        sent.append(text)
+        return "sentence", {"i": len(sent) - 1, "text": text, "ms": ms()}
+
+    try:
+        for _ in range(6):
+            rounds += 1
+            splitter = ReplySentenceStream()
+            held = []          # câu bị GIỮ LẠI tới hết vòng (xem _BOOK_CLAIM)
+            gen = _stream_llm_round(client, msgs)
+            try:
+                while True:
+                    try:
+                        delta = next(gen)
+                    except StopIteration as stop:
+                        msg, tool_calls = stop.value
+                        break
+                    for s in splitter.feed(delta):
+                        # Chưa có ui.booked (tool đặt xe chưa chạy xong) mà câu đã nói kiểu
+                        # "đã đặt xe / tài xế..." -> chưa được nói ra: vòng này còn có thể
+                        # kết thúc bằng tool call (hoặc tool hỏng), không được báo "đã xong"
+                        # trước khi có kết quả thật. Giữ lại, kể cả các câu sau (giữ thứ tự).
+                        if held or (not ui.get("booked") and _BOOK_CLAIM.search(s)):
+                            held.append(s)
+                        else:
+                            yield sentence(s)
+            finally:
+                gen.close()
+            msgs.append(msg)
+
+            if not tool_calls:
+                rest, reply = splitter.finish()
+                if not reply:
+                    reply, rest = _FALLBACK_EMPTY, ([] if splitter.emitted else [_FALLBACK_EMPTY])
+                for s in held + rest:          # vòng cuối không gọi tool -> nhả các câu đã giữ
+                    yield sentence(s)
+                print(f"[timing] agent_stream first_sentence={first_ms}ms total={ms()}ms "
+                      f"rounds={rounds} ui={list(ui.keys())}")
+                yield "done", {"reply": reply, "messages": msgs, "ui": ui,
+                               "ms": ms(), "first_sentence_ms": first_ms}
+                return
+
+            if splitter.emitted:
+                # LLM nói một câu dẫn rồi mới gọi tool (DeepSeek đo thật không làm vậy,
+                # vòng gọi tool có content rỗng). Câu đã nhả thì người dùng đã nghe -> giữ
+                # nguyên trong lịch sử (content của assistant message). Câu bị giữ thì bỏ,
+                # như endpoint cũ vốn bỏ content của vòng gọi tool.
+                print(f"[agent_stream] loi dan truoc tool call: {splitter.emitted!r} (bo {len(held)} cau giu)")
+            calls = []
+            for tc in tool_calls:
+                if tc["function"]["name"] in _WRITE_TOOLS:
+                    # Báo TRƯỚC khi chạy thao tác ghi: từ đây stream có đứt thì client biết
+                    # thao tác có thể đã commit (kết quả "unknown"), không coi là chưa làm.
+                    yield "action", {"name": tc["function"]["name"], "phase": "start", "ms": ms()}
+                calls.append((tc["function"]["name"],
+                              _run_tool(tc["id"], tc["function"]["name"], tc["function"]["arguments"], msgs, pk, ui)))
+            ckpt_msgs, ckpt_ui, sent_at_ckpt = list(msgs), dict(ui), len(sent)
+            yield "tools", {"messages": ckpt_msgs, "ui": ckpt_ui, "ms": ms()}
+
+            reply = _template_reply(calls, msgs)
+            if reply:
+                # Kết quả sạch -> lời mẫu (đúng số của tool), khỏi chờ vòng LLM viết lời.
+                # Gửi như các câu bình thường; lịch sử: tool_calls -> kết quả -> lời mẫu.
+                for s in _SENT_SPLIT.split(reply):
+                    if s.strip():
+                        yield sentence(s.strip())
+                msgs.append({"role": "assistant", "content": reply})
+                print(f"[timing] agent_stream first_sentence={first_ms}ms total={ms()}ms "
+                      f"rounds={rounds} template={calls[0][0]} ui={list(ui.keys())}")
+                yield "done", {"reply": reply, "messages": msgs, "ui": ui,
+                               "ms": ms(), "first_sentence_ms": first_ms}
+                return
+
+        yield sentence(_FALLBACK_ROUNDS)
+        yield "done", {"reply": _FALLBACK_ROUNDS, "messages": msgs, "ui": ui,
+                       "ms": ms(), "first_sentence_ms": first_ms}
+    except Exception as exc:  # noqa: BLE001 — incl. persistent rate limit
+        print("run_agent_stream error:", exc)
+        # Lịch sử trả về = mốc hợp lệ gần nhất (không bao giờ để tool_call thiếu kết quả)
+        # + đúng những gì người dùng ĐÃ NGHE. Chưa nghe gì -> câu "hệ thống bận".
+        heard = sent[sent_at_ckpt:]
+        out_msgs = list(ckpt_msgs)
+        if heard:
+            reply = " ".join(heard)
+            out_msgs.append({"role": "assistant", "content": reply})
+        else:
+            reply = _FALLBACK_BUSY
+            yield sentence(reply)
+            if out_msgs and out_msgs[-1].get("role") == "tool":
+                # Mốc kết thúc bằng kết quả tool -> thêm lời assistant cho chuỗi hợp lệ.
+                out_msgs.append({"role": "assistant", "content": reply})
+        yield "done", {"reply": reply, "messages": out_msgs, "ui": ckpt_ui,
+                       "ms": ms(), "first_sentence_ms": first_ms}

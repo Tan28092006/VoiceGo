@@ -328,6 +328,40 @@ def agent_chat(req: ChatRequest):
     return out
 
 
+def _sse(event, data):
+    """Một sự kiện Server-Sent Events. json.dumps không để lọt xuống dòng thật nên
+    `data:` luôn nằm gọn một dòng."""
+    import json
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/agent/chat_stream")
+def agent_chat_stream(req: ChatRequest):
+    """Như /api/agent/chat nhưng STREAM (SSE): từng câu của lời đáp được gửi ngay khi
+    LLM viết xong câu đó -> frontend đọc câu 1 trong lúc câu 2 còn đang được sinh.
+
+    Sự kiện (xem agent.run_agent_stream): `tools` (mốc lịch sử + ui sau mỗi vòng tool),
+    `sentence` ({i, text, ms}), `done` (đúng payload {reply, messages, ui} của endpoint
+    cũ). /api/agent/chat giữ nguyên làm đường lùi khi stream lỗi.
+
+    Header chống đệm: X-Accel-Buffering: no (proxy kiểu nginx), Cache-Control no-cache +
+    no-transform (Cloudflare/proxy không nén/gom lại), text/event-stream (Cloudflare
+    không đệm loại này). Dòng chú thích đầu tiên đẩy header đi ngay.
+    """
+    from fastapi.responses import StreamingResponse
+    from agent import run_agent_stream
+
+    def events():
+        yield ": stream\n\n"
+        for name, data in run_agent_stream(req.messages, req.pickup):
+            yield _sse(name, data)
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/api/voice/geocode")
 def voice_geocode(req: GeocodeRequest):
     """Debug: resolve a place name to a real address + coordinates."""
