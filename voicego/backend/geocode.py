@@ -23,7 +23,6 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 
 from voice import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_MODEL, llm_json
-from places_db import lookup as _local_lookup, lookup_all as _lookup_all_pd
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
@@ -99,7 +98,8 @@ def _mapbox_geocode(text, center_lat=None, center_lng=None, limit=5):
         lng, lat = float(center[0]), float(center[1])
         name = f.get("text") or text
         addr = (f.get("place_name") or name).replace(", Việt Nam", "").replace(", Vietnam", "").strip()
-        feats.append({"name": name, "address": addr, "lat": lat, "lng": lng})
+        feats.append({"name": name, "address": addr, "lat": lat, "lng": lng,
+                      "type": (f.get("place_type") or [""])[0] or ""})
     # Mapbox mis-ranks VN results (a same-name street in another province can
     # outrank the local one — e.g. "Ngô Gia Tự Q10" put Tây Ninh 88 km away first).
     # For a ride app the destination is near the pickup, so sort by distance to the
@@ -109,10 +109,19 @@ def _mapbox_geocode(text, center_lat=None, center_lng=None, limit=5):
     return feats[:limit]
 
 
+# Kết quả Mapbox cấp VÙNG (cả thành phố, quận/huyện, tỉnh...) không bao giờ là một điểm
+# đến. Ca thật: "Bách Khoa cơ sở 2" (Nominatim không với tới) rơi xuống Mapbox, ra đúng
+# tâm "Thành phố Hồ Chí Minh" cách điểm đón 0.2 km — mà vẫn bị coi là đã xác minh.
+_MAPBOX_COARSE = {"country", "region", "postcode", "district", "place", "locality"}
+
+
 def _mapbox_first(text, center_lat, center_lng):
     """Single best Mapbox hit (nearest to pickup) within the service radius, or None.
-    Used as a fallback BELOW the Gemini+Google-Search layer."""
+    Used as a fallback BELOW the Gemini+Google-Search layer. Region-level hits are
+    skipped (see _MAPBOX_COARSE)."""
     for p in _mapbox_geocode(text, center_lat, center_lng, limit=5):
+        if p.get("type") in _MAPBOX_COARSE:
+            continue
         if _within_service(p["lat"], p["lng"], center_lat, center_lng):
             return p
     return None
@@ -281,14 +290,29 @@ def _nominatim_throttle():
         _nominatim_last = time.time()
 
 
-def _nominatim_full(address, center_lat=None, center_lng=None):
-    """Return (lat, lng, display_name) for an address/POI, or None. When a center
-    is given, viewbox BIASES toward the pickup area (no bounded=1, so an out-of-
-    area query isn't warped onto a random in-box place)."""
-    params = {"q": address, "format": "json", "limit": 1, "countrycodes": "vn"}
+_NM_CACHE = {}           # (query, viewbox) -> (hết hạn, kết quả)
+_NM_CACHE_TTL = 3600
+
+
+def _nominatim_hits(address, center_lat=None, center_lng=None):
+    """Up to 5 (lat, lng, display_name) hits for an address/POI, best first ([] if none).
+    When a center is given, viewbox BIASES toward the pickup area (no bounded=1, so an
+    out-of-area query isn't warped onto a random in-box place).
+
+    Lấy 5 thay vì 1: tên chung ("Đại học Bách khoa ...") khớp NHIỀU cơ sở, và cơ sở đúng
+    của lựa chọn đang ghim thường nằm ngay trong danh sách — chọn cái khớp vị trí thay vì
+    tra tiếp từng dạng tên (mỗi lần 1.1 s).
+    Kết quả (kể cả "không thấy") được nhớ 1 giờ: CÙNG một chuỗi bị tra lặp cho từng cơ sở.
+    Lỗi mạng thì KHÔNG nhớ, và được in ra: trước đây nuốt im lặng nên DNS chặn Nominatim
+    (máy dev) trông y như "không tìm thấy" và luồng lặng lẽ rơi xuống Mapbox."""
+    params = {"q": address, "format": "json", "limit": 5, "countrycodes": "vn"}
     vb = _viewbox(center_lat, center_lng)
     if vb:
         params["viewbox"] = vb
+    key = (address, vb)
+    cached = _NM_CACHE.get(key)
+    if cached and cached[0] > time.time():
+        return cached[1]
     _nominatim_throttle()
     try:
         r = requests.get(
@@ -298,14 +322,27 @@ def _nominatim_full(address, center_lat=None, center_lng=None):
             timeout=10,
         )
         arr = r.json()
-        if arr:
-            disp = arr[0].get("display_name", "")
-            disp = disp.replace(", Việt Nam", "").strip()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[geocode] Nominatim lỗi ({type(exc).__name__}): {str(exc)[:120]}")
+        return []
+    hits = []
+    for it in arr if isinstance(arr, list) else []:
+        try:
+            disp = it.get("display_name", "").replace(", Việt Nam", "").strip()
             disp = re.sub(r",?\s*\d{5,6}\b", "", disp)  # drop postcode
-            return float(arr[0]["lat"]), float(arr[0]["lon"]), disp
-    except Exception:  # noqa: BLE001
-        pass
-    return None
+            hits.append((float(it["lat"]), float(it["lon"]), disp))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if len(_NM_CACHE) > 1000:
+        _NM_CACHE.clear()
+    _NM_CACHE[key] = (time.time() + _NM_CACHE_TTL, hits)
+    return hits
+
+
+def _nominatim_full(address, center_lat=None, center_lng=None):
+    """Return (lat, lng, display_name) for an address/POI (best hit), or None."""
+    hits = _nominatim_hits(address, center_lat, center_lng)
+    return hits[0] if hits else None
 
 
 def _nominatim(address, center_lat=None, center_lng=None):
@@ -438,10 +475,12 @@ def _build_prompt(text, user_lat, user_lng, grounded):
         "bỏ tiền tố loại hình ('Trường', 'Công ty', 'Trung tâm'), KHÔNG dấu ngoặc, "
         "GIỮ phần chi nhánh dạng chữ thường ('cơ sở 2'), KHÔNG kèm số nhà/phường/quận. "
         "Vd 'Trường Đại học Công nghiệp Hà Nội (Cơ sở 2)' -> 'Đại học Công nghiệp Hà Nội cơ sở 2'.\n"
-        "Chuẩn hóa tên bằng cách cộng thêm số thứ tự cơ sở vd: Bách khoa cơ sở 2 thay vì ghi Bách khoa Dĩ an.\n"
+        "Chi nhánh có 2 cách gọi (theo SỐ và theo KHU VỰC): map_query dùng cách theo số "
+        "('cơ sở 2'), map_query_alt dùng cách theo khu vực ('cơ sở Dĩ An'); OSM mỗi nơi đặt "
+        "một kiểu nên cần cả hai. Chỉ có một cách gọi thì để map_query_alt rỗng.\n"
         "Toạ độ DMS tới 0.1 giây, đặt pin ĐÚNG địa điểm (vd 10°47'09.1\"N, 106°42'09.8\"E).\n"
         "CHỈ trả JSON, không giải thích:\n"
-        '{"query_type":"poi|address","locations":[{"name":"","map_query":"","full_address":"",'
+        '{"query_type":"poi|address","locations":[{"name":"","map_query":"","map_query_alt":"","full_address":"",'
         '"lat_dms":"","lng_dms":""}]}'
     )
 
@@ -471,22 +510,64 @@ def _gemini_locations(text, user_lat, user_lng):
         out.append({"name": name, "address": _short_address(item.get("full_address") or name, name),
                     # Tên đã chuẩn hoá cho OSM, do chính model trả về (xem _build_prompt).
                     "map_query": (item.get("map_query") or "").strip(),
+                    "map_query_alt": (item.get("map_query_alt") or "").strip(),
                     "lat": lat, "lng": lng})
     return {"query_type": data.get("query_type", "poi"), "locations": out}
 
 
-def _poi_queries(name, map_query=""):
+_ADMIN_RE = re.compile(r"^(phường|quận|huyện|xã|thị xã|thị trấn|thành phố|tp\.?|tỉnh|khu phố|kp\.?|ấp|tổ|p\.|q\.)(\s|$)",
+                       re.IGNORECASE)
+_CITY_RE = re.compile(r"^(thành phố|tp\.?)\s*hồ chí minh$|^tp\.?\s*hcm$|^tphcm$|^hà nội$|^thành phố hà nội$",
+                      re.IGNORECASE)
+
+
+def _street_address(addr):
+    """'468 Nguyễn Trãi, Phường 8, Quận 5, Thành phố Hồ Chí Minh' -> '468 Nguyễn Trãi, Thành phố
+    Hồ Chí Minh', hoặc '' nếu không có số nhà + tên đường.
+
+    Phường/quận ĐÁNH SỐ kiểu cũ là thứ làm Nominatim khớp bậy sau đợt sáp nhập hành chính
+    2025 (OSM đã đổi tên phường, bỏ quận): đo được "Phường 4, Quận 5" -> "Hẻm 491/5 Lạc
+    Long Quân" (khớp nhầm chữ số), "Phường 8, Quận 5" -> "UBND phường 8 quận 8". Còn số
+    nhà + đường thì đứng vững: "720A Điện Biên Phủ" -> đúng Landmark 81."""
+    parts = [p.strip() for p in (addr or "").split(",") if p.strip()]
+    keep = []
+    for p in parts:
+        if _ADMIN_RE.match(p) or _CITY_RE.match(p):
+            break
+        keep.append(p)
+    if not keep or not re.match(r"^\d+[\w/]*\s+\D", keep[0]):
+        return ""
+    city = next((p for p in parts if _CITY_RE.match(p)), "")
+    return ", ".join(keep + ([city] if city else []))
+
+
+_BRANCH_KW = r"(cơ sở|chi nhánh|campus|\bcs\s*\d)"
+
+
+def _branch_part(name):
+    """Phần chỉ CƠ SỞ/CHI NHÁNH trong tên ('Cơ sở 2', 'cơ sở Dĩ An'), hoặc '' nếu không có.
+    Quy tắc ngôn ngữ (từ khoá chỉ chi nhánh), không phải danh sách địa điểm."""
+    s = name or ""
+    for m in re.finditer(r"\(([^)]*)\)", s):
+        if re.search(_BRANCH_KW, m.group(1), re.IGNORECASE):
+            return m.group(1).strip()
+    m = re.search(_BRANCH_KW + r".*$", s, re.IGNORECASE)
+    return m.group(0).strip(" -)") if m else ""
+
+
+def _poi_queries(name, map_query="", map_query_alt=""):
     """Các dạng tên để tra Nominatim, xếp theo thứ tự ĐO ĐƯỢC là tốt nhất.
 
-    OSM ghi hẳn chi nhánh vào tên POI — "Đại học Công nghiệp Hà Nội (cơ sở 2)" — nên
-    GIỮ phần "cơ sở N" mới ghim đúng cơ sở, bỏ đi thì cả ba cơ sở trỏ về một điểm.
-    Nhưng hai thứ làm Nominatim TRƯỢT HẲN (đo trên chính ca này):
+    OSM ghi hẳn chi nhánh vào tên POI — "Đại học Công nghiệp Hà Nội (cơ sở 2)",
+    "Đại học Bách Khoa - Cơ sở Dĩ An" — nên GIỮ phần cơ sở mới ghim đúng cơ sở. Hai thứ
+    làm Nominatim TRƯỢT HẲN (đo trên chính ca này):
       "Đại học Công nghiệp Hà Nội cơ sở 2"          -> đúng cơ sở 2, Ngõ 59A Tây Tựu
       "Đại học Công nghiệp Hà Nội (Cơ sở 2)"        -> MISS   (dấu ngoặc)
       "Trường Đại học Công nghiệp Hà Nội Cơ sở 2"   -> MISS   (tiền tố "Trường")
-      "Đại học Công nghiệp Hà Nội"                  -> 55 m tới cơ sở 1
-    Cơ sở chính không được OSM đánh số, nên "cơ sở 1" luôn MISS -> phải có dạng tên
-    trần làm phương án hai.
+    Tên thêm định danh hệ thống/thành phố cũng trượt: "Đại học Bách khoa - Đại học Quốc
+    gia Thành phố Hồ Chí Minh Cơ sở 1" -> MISS, nên có dạng gọn chỉ còn tên + cơ sở.
+    Dạng TRẦN (bỏ hẳn phần cơ sở) để cuối cùng: nó ra MỘT cơ sở bất kỳ, nên _pin chỉ nhận
+    nó khi khớp với vị trí của chính lựa chọn đang ghim.
     """
     raw = (name or "").strip()
     if not raw:
@@ -499,35 +580,44 @@ def _poi_queries(name, map_query=""):
         return re.sub(r"\s+", " ", re.sub(r"[()]", " ", s)).strip()
     def _bare(s):     # bỏ hẳn phần trong ngoặc
         return re.sub(r"\s*\([^)]*\)", "", s).strip()
-    # Thứ tự = thứ tự ĐO ĐƯỢC là tốt dần xuống, và không dạng nào bị mất: nếu dạng
-    # trước trượt thì thử dạng sau, nên địa điểm nào cần giữ "Trường" vẫn ra kết quả.
-    # map_query do model tự chuẩn hoá đứng ĐẦU — sửa ở gốc tốt hơn cắt gọt bằng regex;
-    # mấy biến thể regol phía sau chỉ còn là lưới đỡ khi model không trả trường đó.
-    variants = [(map_query or "").strip(), _plain(nopre), _bare(nopre), _plain(raw), _bare(raw), raw]
-    return list(dict.fromkeys([v for v in variants if v]))[:4]
+    def _core(s):     # bỏ đoạn " - <hệ thống/thành phố>" và tên TP.HCM, GIỮ phần cơ sở
+        s = re.sub(r"\s+-\s+[^()]*?(?=\(|$)", " ", s)
+        s = re.sub(r"\b(Thành phố|TP\.?)\s*Hồ Chí Minh\b|\bTP\.?\s*HCM\b|\bTPHCM\b", " ", s,
+                   flags=re.IGNORECASE)
+        return _plain(s)
+    # map_query(_alt) do model tự chuẩn hoá đứng ĐẦU — sửa ở gốc tốt hơn cắt gọt bằng
+    # regex; các biến thể sau chỉ là lưới đỡ khi model không trả trường đó.
+    variants = [(map_query or "").strip(), (map_query_alt or "").strip(), _core(nopre),
+                _plain(nopre), _plain(raw), _bare(nopre), _bare(raw), raw]
+    return list(dict.fromkeys([v for v in variants if v]))[:6]
 
 
 def _drop_coincident(pinned):
     """Loại các candidate ghim TRÙNG ĐIỂM (<200m) với một candidate khác, chỉ giữ đại
     diện đầu mỗi cụm (locs đã sort theo khoảng cách -> đại diện là cái gần điểm đón
-    nhất). Áp dụng cho cả Gemini và DeepSeek: cả hai đều có lúc BỊA thêm chi nhánh
-    không có thật (đo được: hỏi "Đại học Công nghiệp Hà Nội", 2/3 lần liệt kê thêm cả
-    'Cơ sở Thanh Hóa'/'Cơ sở Nghệ An' không tồn tại). Vì chi nhánh bịa không khớp gì
-    trong OSM, nó rơi về đúng toạ độ của cơ sở THẬT gần nhất -> hai chi nhánh khác nhau
-    ghim trùng điểm (chi nhánh thật không bao giờ cách nhau <200m). Đây gần như chắc
-    là bịa, nên LOẠI HẲN khỏi danh sách đọc cho người dùng, không chỉ hạ cờ verified.
+    nhất). `pinned` là list (loc, verified) từ _pin. Áp dụng cho cả Gemini và DeepSeek:
+    cả hai đều có lúc BỊA thêm chi nhánh không có thật (đo được: hỏi "Đại học Công nghiệp
+    Hà Nội", 2/3 lần liệt kê thêm cả 'Cơ sở Thanh Hóa'/'Cơ sở Nghệ An' không tồn tại).
+    Chi nhánh bịa không khớp gì trong OSM, rơi về đúng toạ độ của cơ sở THẬT gần nhất ->
+    hai chi nhánh ghim trùng điểm (chi nhánh thật không bao giờ cách nhau <200m).
+
+    So theo toạ độ GEOCODER đã chốt (`_ref`), không theo toạ độ trả ra: _pin có thể giữ
+    toạ độ Gemini khi hai bên khớp gần, nên hai lựa chọn chốt về CÙNG một POI vẫn lệch
+    nhau vài trăm mét ở đầu ra và lọt qua phép so cũ (ca thật Bách Khoa).
     """
+    def pt(loc):
+        r = loc.get("_ref")
+        return r if r else ((loc["lat"], loc["lng"]) if loc.get("lat") is not None else None)
     kept, seen_idx = [], set()
-    for i, a in enumerate(pinned):
+    for i, (a, ok) in enumerate(pinned):
         if i in seen_idx:
             continue
-        cluster = [i]
-        for j, b in enumerate(pinned[i + 1:], start=i + 1):
-            if (a.get("lat") is not None and b.get("lat") is not None and
-                    _haversine_km(a["lat"], a["lng"], b["lat"], b["lng"]) < 0.2):
-                cluster.append(j)
-        seen_idx.update(cluster)
-        kept.append(pinned[i])
+        pa = pt(a)
+        for j in range(i + 1, len(pinned)):
+            pb = pt(pinned[j][0])
+            if pa and pb and _haversine_km(pa[0], pa[1], pb[0], pb[1]) < 0.2:
+                seen_idx.add(j)
+        kept.append((a, ok))
     return kept
 
 
@@ -535,19 +625,28 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     """Chốt toạ độ để ghim lên bản đồ. Trả (loc, verified).
 
     Nguyên tắc: **Gemini quyết định ĐÓ LÀ CHỖ NÀO, geocoder thật quyết định NÓ
-    NẰM Ở ĐÂU.** Grounding đọc web nên tên + địa chỉ chữ đáng tin; còn toạ độ số
-    thì đo được là nó bịa.
+    NẰM Ở ĐÂU.** Toạ độ số của Gemini đo được là hay bịa/lệch; tên + địa chỉ chữ thì
+    dùng được làm bằng chứng nhận dạng.
 
     Ca thật đã bắt được: hỏi "trường trung học thực hành ĐH Sư phạm TPHCM",
     Gemini trả địa chỉ ĐÚNG (280 An Dương Vương, P4, Q5) nhưng toạ độ lại là
     10.776889,106.700889 — cách ĐIỂM ĐÓN truyền vào prompt đúng 2 mét, tức nó
     chép lại gợi ý vị trí. Mapbox cho 10.757776,106.674800, lệch 3.56 km.
 
-    Nên:
+    Ca thật thứ hai (Bách Khoa, 10/2026): Gemini trả đúng 2 cơ sở, nhưng mọi dạng tên
+    kèm cơ sở đều trượt trong OSM, nên rơi về TÊN TRẦN "Đại học Bách khoa ..." -> OSM trả
+    MỘT cơ sở (tuỳ điểm đón) và CẢ HAI lựa chọn bị ghim vào đó, verified=True: đón ở Quận 1
+    thì "cơ sở 1 (Lý Thường Kiệt)" ra Dĩ An. Một kết quả tra bằng tên chung KHÔNG chứng
+    minh được nó là cơ sở này. Nên:
       - Toạ độ trùng điểm đón (<150 m) => coi như KHÔNG có, đây là dấu hiệu bịa.
+      - Khi tên có thể trỏ sang nơi KHÁC (đang ghim một trong nhiều lựa chọn, hoặc tên
+        có phần cơ sở/chi nhánh), kết quả tra tên phải KHỚP vị trí của chính lựa chọn
+        này (toạ độ Gemini, không có thì địa chỉ Gemini đem tra) trong VERIFY_RADIUS_KM.
+        Không khớp = cơ sở khác -> bỏ, ghim theo ĐỊA CHỈ của lựa chọn này.
       - Có geocoder trả kết quả => geocoder thắng, trừ khi là POI và hai bên đã
         khớp nhau (lúc đó giữ toạ độ Gemini vì nó ghim đúng toà nhà, còn
         geocoder hay rơi ra giữa đường).
+      - Mapbox chỉ là lưới đỡ; với POI chỉ nhận kết quả loại "poi" hoặc khớp vị trí.
       - Không geocoder nào trả => đành giữ Gemini nhưng verified=False.
     """
     g = None
@@ -556,64 +655,107 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
     if g and pickup and _haversine_km(g[0], g[1], pickup[0], pickup[1]) <= 0.15:
         g = None                                   # chép lại điểm đón -> vứt
 
-    # Tra bằng ĐỊA CHỈ, không phải tên. Đo trên chính ca trường THTH ĐHSP, lấy
-    # mốc độc lập (xembando.vn 10.7608458,106.682471):
-    #   Nominatim + địa chỉ   ->    47 m
-    #   Mapbox    + địa chỉ   ->   905 m
-    #   Mapbox    + tên       ->  4.0 km
-    #   Mapbox    + tên+đ/c   ->  272 km  (nhảy ra Ninh Thuận)
-    # Nên Nominatim đi trước, Mapbox chỉ là lưới đỡ khi Nominatim không có gì.
-    # ── Gemini = bộ não hiểu ý, Nominatim = chốt toạ độ chính xác ──
-    # POI: tra TÊN trước (Nominatim tìm "Lăng Chủ tịch Hồ Chí Minh" chuẩn 41m,
-    #       nhưng địa chỉ "2 Hùng Vương, Điện Biên, Ba Đình" thì fail).
-    # Address: tra ĐỊA CHỈ trước (số nhà + đường chính xác hơn).
+    # POI: tra TÊN trước (Nominatim tìm "Lăng Chủ tịch Hồ Chí Minh" chuẩn 41m, nhưng địa
+    # chỉ "2 Hùng Vương, Điện Biên, Ba Đình" thì fail). Address: tra ĐỊA CHỈ trước. Nominatim
+    # trước Mapbox (đo trên 8 địa điểm VN: thắng 7-1), mọi kết quả phải trong bán kính phục vụ
+    # ("THPT Lê Hồng Phong" từng ra tận 1120 km).
     name = loc.get("name") or ""
     addr = loc.get("address") or ""
     primary = addr if is_address else name
     fallback = name if is_address else addr
+    within = lambda h: h and _within_service(h[0], h[1], center_lat, center_lng)  # noqa: E731
 
-    # Nominatim trước (đo trên 8 địa điểm VN: thắng Mapbox 7-1 và không bao giờ
-    # trả rỗng), nhưng thỉnh thoảng lệch THẢM HOẠ — "THPT Lê Hồng Phong" ra tận
-    # 1120 km. Nên mọi kết quả đều phải nằm trong bán kính phục vụ, sai thì rơi
-    # xuống Mapbox chứ không ghim bừa.
-    ref = None
-    # POI: thử lần lượt các dạng tên (giữ "cơ sở N", bỏ ngoặc/tiền tố) — xem _poi_queries.
-    # Địa chỉ số nhà: tra thẳng địa chỉ trước.
-    tries = [primary] if is_address else _poi_queries(name, loc.get("map_query"))
-    nm = None
+    # Toạ độ Gemini đo được thường chỉ lệch 0.2-0.4 km, TRỪ khi nó bám sát điểm đón (ca thật:
+    # "Landmark 81" đặt cách điểm đón 0.5 km, xa toà nhà thật 2.7 km) -> lúc đó không đem làm mốc.
+    g_ok = g if (g and not (pickup and _haversine_km(g[0], g[1], pickup[0], pickup[1]) <= 0.6)) else None
+    must_agree = (not is_address) and (one_shot or bool(_branch_part(name)))
+    anchor = {"hit": None, "tried": False}
+
+    def near(a, b):
+        return _haversine_km(a[0], a[1], b[0], b[1]) <= VERIFY_RADIUS_KM
+
+    def addr_hit():
+        # Vị trí theo ĐỊA CHỈ chữ của chính lựa chọn này: địa chỉ đầy đủ, rồi số nhà + đường.
+        # KHÔNG tra lại theo phường/quận trơ trọi (xem _street_address).
+        if not anchor["tried"]:
+            anchor["tried"] = True
+            for q in dict.fromkeys([addr.strip(), _street_address(addr)]):
+                if not q:
+                    continue
+                a = next((h for h in _nominatim_hits(q, center_lat, center_lng) if within(h)), None)
+                if a:
+                    anchor["hit"] = a
+                    break
+        return anchor["hit"]
+
+    def pick(hits):
+        """Kết quả tra TÊN nào là chính nơi này: khớp toạ độ Gemini (nếu đáng tin), không
+        thì khớp vị trí theo địa chỉ. Có bằng chứng mà không cái nào khớp = tên đang trỏ
+        nơi KHÁC (cơ sở khác của cùng trường; "Landmark 81" -> "PetroVietnam Landmark";
+        "Đại học Bách khoa" -> cơ sở kia) -> bỏ. Không có bằng chứng nào: địa điểm đơn thì
+        tin tên như trước, một trong nhiều lựa chọn thì không (tên chung dễ là cơ sở khác)."""
+        if g_ok:
+            c = sorted((h for h in hits if near(g_ok, h)), key=lambda h: _haversine_km(g_ok[0], g_ok[1], h[0], h[1]))
+            if c:
+                return c[0]
+        a = addr_hit() if not is_address else None
+        if a:
+            # Tên và địa chỉ khớp NHAU -> 2 trên 3, thắng cả khi toạ độ Gemini lệch.
+            c = [h for h in hits if near(a, h)]
+            if c:
+                return c[0]
+        if is_address or not (g_ok or a or must_agree):
+            return hits[0]
+        return None
+
+    tries = [primary] if is_address else _poi_queries(name, loc.get("map_query"), loc.get("map_query_alt"))
+    nm, from_addr = None, False
     for q in tries:
         if not q.strip():
             continue
-        nm = _nominatim_full(q, center_lat, center_lng)
-        if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
-            break
-        nm = None
-    # one_shot: khi ghim CẢ danh sách, mỗi lựa chọn chỉ được tra Nominatim MỘT lần.
-    # Nominatim buộc giãn 1.1s/lần nên lần tra thứ hai làm tổng thời gian phình gấp
-    # đôi (đo được 16.4s cho 3 lựa chọn) — không đáng, vì lần tra đầu đã đủ tốt.
-    if not nm and not one_shot and fallback.strip() and fallback != primary:
-        nm = _nominatim_full(fallback, center_lat, center_lng)
-    # Địa chỉ ĐỌC luôn lấy theo geocoder thật (Nominatim rồi Mapbox), KHÔNG theo Gemini
-    # tự đoán — Gemini chỉ còn là phương án cuối khi geocoder không cho địa chỉ nào.
-    # Đo được nhiều ca Gemini bịa cả tên phường/quận ('cơ sở 3' đọc ra Hà Đông, rồi lần
-    # khác ra 'Đề Yêm' — không nơi nào có thật trong OSM) trong khi geocoder đã xác nhận
-    # đúng nơi; chưa bắt được ca ngược lại nào (geocoder sai còn Gemini đúng).
-    if nm and _within_service(nm[0], nm[1], center_lat, center_lng):
-        ref = {"name": loc["name"], "address": nm[2] or addr, "lat": nm[0], "lng": nm[1]}
+        hits = [h for h in _nominatim_hits(q, center_lat, center_lng) if within(h)]
+        if hits:
+            nm = pick(hits)
+            if nm:
+                break
+    # Tên không ghim được (hoặc chỉ ra nơi KHÁC) -> ghim theo trường còn lại (địa chỉ cho POI,
+    # tên cho địa chỉ). Trước đây bỏ bước này khi ghim cả danh sách (one_shot) cho nhanh, nhưng
+    # đó đúng là lúc tên chung dễ trỏ sang cơ sở khác; nhờ cache không tốn thêm lần tra nào.
+    if not nm and fallback.strip() and fallback != primary:
+        hit = addr_hit() if not is_address else _nominatim_full(fallback, center_lat, center_lng)
+        # Ghim theo địa chỉ khi không tên nào khớp: địa chỉ phải khớp toạ độ Gemini (nếu đáng
+        # tin) — hai nguồn duy nhất còn lại mà cãi nhau thì không tin bên nào, để verified=False.
+        if within(hit) and (is_address or g_ok is None or near(g_ok, hit)):
+            nm, from_addr = hit, not is_address
+    # Địa chỉ ĐỌC luôn lấy theo geocoder thật, KHÔNG theo Gemini tự đoán (đo được nhiều ca
+    # Gemini bịa cả tên phường/quận trong khi geocoder đã xác nhận đúng nơi).
+    ref = None
+    if nm:
+        disp = nm[2] or addr
+        if from_addr:
+            # Ghim theo ĐỊA CHỈ: tên POI đứng đầu kết quả là của chỗ khác cùng số nhà
+            # (ca thật: "OCB, 268 Lý Thường Kiệt") -> bỏ, đọc từ số nhà/đường trở đi.
+            ps = [p.strip() for p in disp.split(",")]
+            if len(ps) >= 2 and not re.search(r"\d", ps[0]) and re.search(r"\d", ps[1]):
+                disp = ", ".join(ps[1:])
+        ref = {"name": loc["name"], "address": disp, "lat": nm[0], "lng": nm[1]}
     if not ref:
         mb = _mapbox_first(addr or name, center_lat, center_lng)
-        if mb and _within_service(mb["lat"], mb["lng"], center_lat, center_lng):
+        pt = g_ok or (addr_hit() if not is_address else None)
+        if mb and (is_address or mb.get("type") == "poi" or (pt is not None and near(pt, (mb["lat"], mb["lng"])))):
             ref = {**mb, "address": mb.get("address") or addr}
 
     if not ref:
         return loc, False                          # không có gì để đối chiếu
     final_addr = _short_address(ref.get("address"), loc["name"])
-    if g and not is_address and _haversine_km(g[0], g[1], ref["lat"], ref["lng"]) <= VERIFY_RADIUS_KM:
-        # POI khớp gần -> giữ TOẠ ĐỘ Gemini (đứng đúng building hơn geocoder), nhưng
-        # vẫn đổi ĐỊA CHỈ theo geocoder vì lý do trên.
-        return {"name": loc["name"], "address": final_addr, "lat": g[0], "lng": g[1]}, True
+    ref_pt = (ref["lat"], ref["lng"])
+    if g_ok and not is_address and not from_addr and _haversine_km(g_ok[0], g_ok[1], ref["lat"], ref["lng"]) <= 0.3:
+        # POI khớp RẤT gần (<=300 m) -> giữ TOẠ ĐỘ Gemini (đứng đúng building hơn geocoder),
+        # vẫn đổi ĐỊA CHỈ theo geocoder. Trước đây ngưỡng là 3 km: Gemini lệch 2.7 km
+        # (Landmark 81) vẫn được giữ, đè lên toạ độ geocoder đã đúng.
+        return {"name": loc["name"], "address": final_addr, "lat": g[0], "lng": g[1], "_ref": ref_pt}, True
     return {"name": loc["name"], "address": final_addr,
-            "lat": ref["lat"], "lng": ref["lng"]}, True
+            "lat": ref["lat"], "lng": ref["lng"], "_ref": ref_pt}, True
 
 
 def geocode_query(query, user_lat=None, user_lng=None):
@@ -651,6 +793,7 @@ def verify_location(loc, user_lat=None, user_lng=None, is_address=False):
     center_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
     pickup = (user_lat, user_lng) if user_lat is not None else None
     out, ok = _pin(loc, center_lat, center_lng, is_address, pickup)
+    out = {k: v for k, v in out.items() if k != "_ref"}
     out["verified"] = ok
     if user_lat is not None:
         out["distanceKm"] = round(_haversine_km(user_lat, user_lng, out["lat"], out["lng"]), 1)
@@ -686,12 +829,10 @@ def resolve_locations(text, user_lat=None, user_lng=None):
             return True
         return _within_service(loc["lat"], loc["lng"], center_lat, center_lng)
 
-    # 0) Gazetteer đã kiểm chứng (tức thì, chính xác; có thể sẵn nhiều chi nhánh).
-    ga = [{"name": c["name"], "address": c.get("address"), "lat": c["lat"], "lng": c["lng"]}
-          for c in _lookup_all_pd(text)]
-    ga = [l for l in ga if within(l)]
-    if ga:
-        return {"ok": True, "query_type": "poi", "source": "verified", "locations": [fin(l) for l in ga[:4]]}
+    # KHÔNG có danh bạ địa điểm viết cứng (places_db đã bỏ): nó trả thẳng toạ độ có sẵn,
+    # bỏ qua cả Gemini lẫn Nominatim, nên một alias chung như "bách khoa" khớp bừa cơ sở
+    # có sẵn trong danh bạ thay vì nơi người dùng thật sự muốn. Mọi địa điểm đều đi đúng
+    # một đường: Gemini đề xuất tên -> geocoder thật (Nominatim, rồi Mapbox) chốt toạ độ.
 
     # 1) Gemini grounded + Mapbox CHẠY SONG SONG: Mapbox (~0.5s) chạy nấp dưới
     # bóng Gemini (~3.2s) nên không tốn thêm thời gian, và nếu Gemini hỏng/hết
@@ -723,9 +864,9 @@ def resolve_locations(text, user_lat=None, user_lng=None):
             with ThreadPoolExecutor(max_workers=min(4, len(locs))) as pool:
                 futs = [pool.submit(_pin, l, center_lat, center_lng, is_addr, pickup, True)
                         for l in locs]
-                pinned = [fin(loc, ok) for loc, ok in (f.result() for f in futs)]
+                pinned = _drop_coincident([f.result() for f in futs])
             return {"ok": True, "query_type": data.get("query_type", "poi"),
-                    "source": "grounded", "locations": _drop_coincident(pinned)}
+                    "source": "grounded", "locations": [fin(loc, ok) for loc, ok in pinned]}
 
         # Chỉ MỘT nơi -> đó chính là điểm đến, chốt toạ độ luôn.
         loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)
@@ -772,9 +913,9 @@ def resolve_locations(text, user_lat=None, user_lng=None):
                 with ThreadPoolExecutor(max_workers=min(4, len(locs))) as pool:
                     futs = [pool.submit(_pin, l, center_lat, center_lng, is_addr, pickup, True)
                             for l in locs]
-                    pinned = [fin(loc, ok) for loc, ok in (f.result() for f in futs)]
+                    pinned = _drop_coincident([f.result() for f in futs])
                 return {"ok": True, "query_type": ds_data.get("query_type", "poi"),
-                        "source": "deepseek_only", "locations": _drop_coincident(pinned)}
+                        "source": "deepseek_only", "locations": [fin(loc, ok) for loc, ok in pinned]}
 
             # Có đúng 1 kết quả -> verify chặt chẽ qua _pin (Resolve 2)
             loc0, ok0 = _pin(locs[0], center_lat, center_lng, is_addr, pickup)

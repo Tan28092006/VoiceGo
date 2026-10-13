@@ -59,19 +59,6 @@ def test_layers():
         print(f'📝 Query: "{q}"')
         print(f"{'─'*70}")
 
-        # ── Layer 0: Gazetteer (places_db) ──
-        from places_db import lookup, lookup_all
-        t0 = time.time()
-        ga = lookup(q)
-        dt = time.time() - t0
-        if ga:
-            d = haversine_km(ga["lat"], ga["lng"], GT_LAT, GT_LNG)
-            print(f"  GAZETTEER              {ga['lat']:.5f}, {ga['lng']:.5f}   lệch {fmt_dist(d):>10s}   ({dt*1000:.0f}ms)")
-            results.append(("gazetteer", q, ga["lat"], ga["lng"], d, dt))
-        else:
-            print(f"  GAZETTEER              (không khớp)                              ({dt*1000:.0f}ms)")
-            results.append(("gazetteer", q, None, None, None, dt))
-
         # ── Layer 1: Gemini (grounded) ──
         from geocode import _gemini_locations, GEMINI_API_KEY
         if GEMINI_API_KEY:
