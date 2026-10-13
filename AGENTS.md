@@ -4,7 +4,8 @@
 Production: https://voicego-9k11.onrender.com (Render free). **Push lên `main` = auto-deploy** (`render.yaml`).
 
 - **Trước khi chạy, test, deploy hoặc sửa vòng giọng nói: đọc [`voicego/AGENTS.md`](voicego/AGENTS.md)** (bản đồ, lệnh đã kiểm, env, deploy gotchas, trạng thái).
-- Kiểm nhanh: `cd voicego/frontend && npm test` · `cd voicego/backend && py -m pytest -q`
+- Kiểm nhanh: `cd voicego/frontend && npm test` (unit) · `npm run eval` (eval offline, không gọi API) · `cd voicego/backend && py -m pytest -q`
+- GitNexus index theo commit; `analyze` repo này cần `NODE_OPTIONS=--max-old-space-size=6144` (thiếu là hết heap). MCP không kết nối được thì dùng CLI `node .gitnexus/run.cjs impact|detect-changes`.
 - Tự làm được: test, server local, build vào thư mục tạm. **Hỏi user trước:** commit/push (push `main` = deploy production), gọi API trả phí/quota (DeepSeek, Gemini, Groq, `smoke_test.sh`, `test:live`), đụng `.env`/secret. Chi tiết: `voicego/AGENTS.md` mục 0.
 - Bất biến: `/api/health` không được gọi Mongo/mạng; `index.html` luôn `Cache-Control: no-cache`; không in/commit giá trị trong `backend/.env`.
 - Một số docs trong `voicego/` là lịch sử (FPT.AI, Vercel); `voicego/AGENTS.md` mục 9 ghi cái nào còn đúng.
@@ -12,7 +13,7 @@ Production: https://voicego-9k11.onrender.com (Render free). **Push lên `main` 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **GRAB-HACKATHON-_-TEAM-S** (1017 symbols, 2081 relationships, 84 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **GRAB-HACKATHON-_-TEAM-S** (1929 symbols, 3993 relationships, 162 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 

@@ -75,7 +75,15 @@ export function srcHashes() {
 export function writeResult(name, summary) {
   const dir = path.join(EVAL_DIR, 'results');
   fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${name}.json`);
   const body = { eval: name, at: new Date().toISOString(), src: srcHashes(), ...summary };
-  fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(body, null, 1));
+  // Chỉ ghi khi số liệu hoặc hash nguồn đổi: trước đây mỗi lần chạy eval đều ghi lại chỉ vì
+  // `at` đổi -> cây git luôn bẩn sau khi test, dễ commit nhầm kết quả "mới" mà không có gì mới.
+  try {
+    const old = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const same = JSON.stringify({ ...old, at: null }) === JSON.stringify(JSON.parse(JSON.stringify({ ...body, at: null })));
+    if (same) return old;
+  } catch { /* chưa có file / hỏng -> ghi mới */ }
+  fs.writeFileSync(file, JSON.stringify(body, null, 1));
   return body;
 }

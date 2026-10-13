@@ -1,0 +1,84 @@
+{
+ "eval": "shipped_turn",
+ "at": "2026-10-13T03:52:09.826Z",
+ "src": {
+  "src/services/liveStt.js": "a39351fdbb4b0034befe35059c92cc76bbe82460",
+  "src/services/voiceRecorder.js": "72fb385c0303860e1ba21449d9310c4da372d9f7",
+  "src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+  "src/hooks/useVoiceApp.js": "04150593b222668956dc93d4008eef8a123216f3",
+  "head": "0f979f4"
+ },
+ "confirmMs": 1500,
+ "extendMs": 700,
+ "summary": {
+  "dev": {
+   "n": 18,
+   "nEcho": 9,
+   "nUser": 9,
+   "falseBarge": 1,
+   "missed": 0,
+   "userWordLoss": 0,
+   "strictPass": 0.9444444444444444,
+   "confirmMs": {
+    "p50": 789.5,
+    "p95": 1623.75,
+    "max": 1809,
+    "n": 6
+   },
+   "echoPauseMs": {
+    "p50": 1438.1666666666665,
+    "max": 2303.9999999999995,
+    "n": 8
+   },
+   "fails": [
+    "echo_p_g07_A2:confirmed:\"xe số\""
+   ]
+  },
+  "holdout": {
+   "n": 17,
+   "nEcho": 9,
+   "nUser": 8,
+   "falseBarge": 3,
+   "missed": 0,
+   "userWordLoss": 0,
+   "strictPass": 0.8235294117647058,
+   "confirmMs": {
+    "p50": 890,
+    "p95": 1625,
+    "max": 1716,
+    "n": 5
+   },
+   "echoPauseMs": {
+    "p50": 1671.1666666666665,
+    "max": 2303.9999999999995,
+    "n": 6
+   },
+   "fails": [
+    "echo_p_g07_H1:confirmed:\"Chào bạn nhé.\"",
+    "echo_p_g07_H2:confirmed:\"khoảng 400 m\"",
+    "echo_full_g05_H3:confirmed:\"\""
+   ]
+  },
+  "latency": {
+   "n": 12,
+   "nEcho": 0,
+   "nUser": 12,
+   "falseBarge": 0,
+   "missed": 0,
+   "userWordLoss": 0,
+   "strictPass": 1,
+   "confirmMs": {
+    "p50": null,
+    "p95": null,
+    "max": null,
+    "n": 0
+   },
+   "echoPauseMs": {
+    "p50": null,
+    "max": null,
+    "n": 0
+   },
+   "fails": []
+  }
+ }
+}

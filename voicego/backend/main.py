@@ -320,7 +320,8 @@ async def voice_tts_stream(text: str, voice: str = "banmai", speed: str = ""):
 
 @app.post("/api/agent/chat")
 def agent_chat(req: ChatRequest):
-    """One turn of the conversational booking agent (Groq + tools)."""
+    """One turn of the conversational booking agent (DeepSeek function-calling + tools).
+    Fallback cho /api/agent/chat_stream; hành vi giữ nguyên."""
     _t0 = time.perf_counter()
     out = run_agent(req.messages, req.pickup)
     print(f"[timing] agent {int((time.perf_counter() - _t0) * 1000)}ms "

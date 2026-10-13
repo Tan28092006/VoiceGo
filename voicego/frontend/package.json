@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run tests/unit",
     "test:live": "vitest run tests/live",
-    "eval": "vitest run tests/eval"
+    "eval": "vitest run tests/eval --no-file-parallelism"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

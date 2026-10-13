@@ -1,6 +1,7 @@
 /**
- * Gemini Live STT (gemini-3.5-transcribe-live) — nhánh STT mới, bật bằng nút trên
- * Header hoặc env STT_ENGINE=gemini-live. Nhánh mặc định vẫn là Whisper.
+ * Gemini Live STT (gemini-3.5-transcribe-live) — nhánh STT MẶC ĐỊNH (env STT_ENGINE,
+ * nút trên Header ghi đè theo máy). Whisper (Groq) là nhánh còn lại và là lưới đỡ khi
+ * session Gemini hỏng giữa lượt.
  *
  * Trình duyệt mở WebSocket THẲNG tới Gemini bằng ephemeral token do backend cấp
  * (/api/voice/live-token), không đi vòng qua Render. Audio chỉ được gửi khi VAD ở

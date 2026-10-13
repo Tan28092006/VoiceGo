@@ -1,12 +1,12 @@
 {
  "eval": "echo_live",
- "at": "2026-10-13T03:21:52.895Z",
+ "at": "2026-10-13T03:52:09.208Z",
  "src": {
-  "src/services/liveStt.js": "36a331f3ef1bf8ebea7fed540a6b7f5360bd06a2",
+  "src/services/liveStt.js": "a39351fdbb4b0034befe35059c92cc76bbe82460",
   "src/services/voiceRecorder.js": "72fb385c0303860e1ba21449d9310c4da372d9f7",
   "src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
   "src/hooks/useVoiceApp.js": "04150593b222668956dc93d4008eef8a123216f3",
-  "head": "f3c11fe"
+  "head": "0f979f4"
  },
  "runs": [
   {

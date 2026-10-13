@@ -1,8 +1,8 @@
 """
-voice.py — Speech-to-Text (Groq Whisper) and Text-to-Speech (Microsoft Edge TTS).
-
-Everything else (intent parsing, place matching, routing, pricing) is done in the
-browser by reusing local-engine.js — so this file stays tiny.
+voice.py — giọng nói phía server: ephemeral token cho Gemini Live STT (STT mặc định,
+trình duyệt tự stream tới Gemini), Whisper STT qua Groq (nhánh còn lại / lưới đỡ), Edge
+TTS (giọng Edge; mặc định app dùng giọng trình duyệt), cùng pool key Gemini và warmup.
+Agent hội thoại nằm ở agent.py, tìm địa điểm ở geocode.py.
 """
 import os
 import re
