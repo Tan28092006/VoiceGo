@@ -21,6 +21,12 @@ ADDR_DIAN = "Đông Hòa, Dĩ An, Bình Dương"
 def _fake_osm(calls):
     def nominatim_hits(q, lat=None, lng=None):
         calls.append(q)
+        if q == BARE:
+            # Like the real API (limit=5): both campuses come back, the WRONG one first.
+            near_thuduc = lat is not None and abs(lat - PICKUP_THUDUC[0]) < 0.05
+            q10 = (*Q10, "Đại học Bách Khoa, 268 Lý Thường Kiệt")
+            dian = (*DIAN, "Đại học Bách Khoa - Cơ sở Dĩ An, Tạ Quang Bửu")
+            return [q10, dian] if near_thuduc else [dian, q10]
         h = one(q, lat, lng)
         return [h] if h else []
 
@@ -58,6 +64,7 @@ def _no_network(monkeypatch):
     monkeypatch.setattr(g, "_mapbox_geocode", lambda *a, **k: [])
     monkeypatch.setattr(g, "_nominatim_hits", lambda *a, **k: [])
     g._NM_CACHE.clear()
+    g._RESOLVE_CACHE.clear()     # resolve_locations caches results: no leakage between tests
 
 
 @pytest.fixture
@@ -129,9 +136,9 @@ def test_single_poi_gemini_coords_wrong_trusts_name(monkeypatch):
     calls = []
     monkeypatch.setattr(g, "_nominatim_hits", _osm_table({
         "Chợ Bến Thành": [(10.77253, 106.69804, "Chợ Bến Thành, Quận 1")],
-        "Lê Lợi, Quận 1": [(10.7731, 106.7000, "Lê Lợi, Quận 1")],
+        "123 Lê Lợi, Quận 1": [(10.7731, 106.7000, "123, Lê Lợi, Quận 1")],
     }, calls))
-    loc = {"name": "Chợ Bến Thành", "map_query": "Chợ Bến Thành", "address": "Lê Lợi, Quận 1",
+    loc = {"name": "Chợ Bến Thành", "map_query": "Chợ Bến Thành", "address": "123 Lê Lợi, Quận 1",
            "lat": 10.80, "lng": 106.80}     # Gemini coords ~10 km off, address disagrees with them
     out, ok = g._pin(loc, *PICKUP_Q1, is_address=False, pickup=PICKUP_Q1)
     assert ok and abs(out["lat"] - 10.77253) < 1e-6, out
@@ -220,3 +227,76 @@ def test_street_address_parser():
     assert g._street_address("268 Lý Thường Kiệt, Phường 14, Quận 10") == "268 Lý Thường Kiệt"
     assert g._street_address("Khu phố 6, Phường Linh Trung, Thành phố Thủ Đức") == ""
     assert g._street_address("Đông Hòa, Dĩ An, Bình Dương") == ""
+
+
+def test_gemini_point_near_pickup_still_confirms_a_nearby_name_hit(monkeypatch):
+    # Real run 10/2026: rider at ĐH Quốc tế asks for KHTN Linh Trung, 0.4 km away. Gemini's
+    # point is right but "near the pickup"; the right name hit was rejected and the pin fell
+    # to "Trạm Y Tế Phường Linh Trung" (4.5 km) via a ward-level address.
+    calls = []
+    monkeypatch.setattr(g, "_nominatim_hits", _osm_table({
+        "Đại học Khoa học Tự nhiên khu đô thị đại học": [(10.87439, 106.80004, "Đại Học Khoa học Tự Nhiên, Quảng Trường Sáng Tạo")],
+        "Phường Linh Trung, Thành phố Thủ Đức, TP. Hồ Chí Minh": [(10.86466, 106.76195, "Trạm Y Tế Phường Linh Trung")],
+    }, calls))
+    loc = {"name": "Trường Đại học Khoa học Tự nhiên - ĐHQG TP.HCM (Cơ sở Thủ Đức)",
+           "map_query": "Đại học Khoa học Tự nhiên cơ sở Thủ Đức",
+           "map_query_alt": "Đại học Khoa học Tự nhiên khu đô thị đại học",
+           "address": "Phường Linh Trung, Thành phố Thủ Đức, TP. Hồ Chí Minh", "lat": 10.8750, "lng": 106.8005}
+    out, ok = g._pin(loc, *PICKUP_THUDUC, is_address=False, pickup=PICKUP_THUDUC)
+    assert ok and g._haversine_km(out["lat"], out["lng"], 10.87439, 106.80004) < 0.3, out
+    assert "Trạm Y Tế" not in out["address"]
+    assert "Phường Linh Trung, Thành phố Thủ Đức, TP. Hồ Chí Minh" not in calls   # ward-only: never an anchor
+
+
+def test_query_variants_dedupe_case_insensitively():
+    qs = g._poi_queries("Đại học Khoa học Tự nhiên (Cơ sở Thủ Đức)", "Đại học Khoa học Tự nhiên cơ sở Thủ Đức")
+    assert len(qs) == len({q.casefold() for q in qs}), qs
+
+
+def test_resolution_is_cached_and_distance_recomputed(monkeypatch):
+    g._RESOLVE_CACHE.clear()
+    n = {"gemini": 0}
+    def gem(text, lat, lng):
+        n["gemini"] += 1
+        return {"query_type": "poi", "locations": [
+            {"name": "Chợ Bến Thành", "map_query": "Chợ Bến Thành", "map_query_alt": "",
+             "address": "Quận 1", "lat": 10.7726, "lng": 106.6981}]}
+    monkeypatch.setattr(g, "_gemini_locations", gem)
+    monkeypatch.setattr(g, "_nominatim_hits", lambda q, *a, **k: [(10.77253, 106.69804, "Chợ Bến Thành, Quận 1")]
+                        if q == "Chợ Bến Thành" else [])
+    a = g.resolve_locations("chợ Bến Thành", *PICKUP_Q1)
+    b = g.resolve_locations("Chợ  bến thành", PICKUP_Q1[0] + 0.001, PICKUP_Q1[1])   # same ~1 km cell
+    assert n["gemini"] == 1 and b.get("cached") is True
+    assert a["locations"][0]["lat"] == b["locations"][0]["lat"]
+    g._RESOLVE_CACHE.clear()
+
+
+def test_branch_with_copied_pickup_coords_uses_named_ward_to_choose(monkeypatch):
+    # Real run 10/2026: Gemini returned KHTN "Cơ sở Linh Trung" with the pickup's own
+    # coordinates (discarded) and a ward-level address; every branch-qualified name missed,
+    # the generic name returned BOTH campuses. The app answered "0.0 km" (the pickup).
+    calls = []
+    monkeypatch.setattr(g, "_nominatim_hits", _osm_table({
+        "Đại học Khoa học Tự nhiên": [(10.76335, 106.68236, "Đại học Khoa học Tự nhiên, Nguyễn Văn Cừ"),
+                                      (10.87439, 106.80004, "Đại Học Khoa học Tự Nhiên, Quảng Trường Sáng Tạo")],
+        "Khu phố 6, Phường Linh Trung, Thành phố Thủ Đức": [(10.86466, 106.76195, "Trạm Y Tế Phường Linh Trung")],
+    }, calls))
+    loc = {"name": "Trường Đại học Khoa học Tự nhiên - ĐHQG TP.HCM (Cơ sở Linh Trung)",
+           "map_query": "Đại học Khoa học Tự nhiên cơ sở 2", "map_query_alt": "Đại học Khoa học Tự nhiên cơ sở Thủ Đức",
+           "address": "Khu phố 6, Phường Linh Trung, Thành phố Thủ Đức",
+           "lat": PICKUP_THUDUC[0], "lng": PICKUP_THUDUC[1]}            # copied pickup
+    out, ok = g._pin(loc, *PICKUP_THUDUC, is_address=False, pickup=PICKUP_THUDUC, one_shot=True)
+    assert ok and g._haversine_km(out["lat"], out["lng"], 10.87439, 106.80004) < 0.3, out
+    assert "Trạm Y Tế" not in out["address"]
+    assert (out["lat"], out["lng"]) != PICKUP_THUDUC
+
+
+def test_numbered_old_ward_is_never_a_coarse_anchor(monkeypatch):
+    calls = []
+    monkeypatch.setattr(g, "_nominatim_hits", _osm_table({
+        "Đại học Y": [(10.7740, 106.6470, "Đại học Y, Lạc Long Quân")],
+    }, calls))
+    loc = {"name": "Đại học Y (Cơ sở 2)", "map_query": "Đại học Y cơ sở 2",
+           "address": "Phường 4, Quận 5", "lat": PICKUP_Q1[0], "lng": PICKUP_Q1[1]}
+    out, ok = g._pin(loc, *PICKUP_Q1, is_address=False, pickup=PICKUP_Q1, one_shot=True)
+    assert "Phường 4, Quận 5" not in calls and ok is False

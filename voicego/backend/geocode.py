@@ -14,6 +14,7 @@ and the booking only proceeds after the user confirms the read-back address.
 """
 import os
 import re
+import copy
 import json
 import time
 import math
@@ -35,6 +36,7 @@ MAPBOX_GEOCODE_URL = "https://api.mapbox.com/geocoding/v5/mapbox.places"
 # với geocoder thật (Mapbox, rồi Nominatim). Lệch quá ngưỡng này coi như không
 # khớp -> hạ cờ verified để tầng trên biết mà thận trọng.
 VERIFY_RADIUS_KM = 3.0
+COARSE_KM = 6.0          # mốc cấp phường (không số nhà): chỉ để CHỌN giữa các cơ sở xa nhau
 
 # Service model: instead of a fixed city box, we bias + limit geocoding to a
 # radius around the PICKUP location (the user's GPS). This makes the app work
@@ -160,6 +162,15 @@ _GEMINI_NO_THINKING = set()   # model -> đã biết từ chối thinking_config
 # không còn phụ thuộc vào việc Gemini có tra web sống hay không. Đặt GEMINI_GROUNDING=true
 # nếu sau này có hạn mức riêng đủ lớn (tài khoản trả phí) mới nên bật lại.
 GEMINI_GROUNDING = os.getenv("GEMINI_GROUNDING", "false").strip().lower() in ("1", "true", "yes")
+# Grounding có hạn mức RIÊNG: key miễn phí đo được (10/2026) trả 429 cho MỌI lượt có Google
+# Search trong khi gọi thường vẫn chạy. Lúc đó TẮT grounding một giờ (không treo key — key vẫn
+# còn quota gọi thường), thay vì mỗi lượt tìm địa điểm phí ~1.5 s x số key cho các 429 vô ích.
+_GROUNDING_OFF_UNTIL = 0.0
+_GROUNDING_OFF_SEC = 3600
+
+
+def grounding_active():
+    return GEMINI_GROUNDING and time.time() >= _GROUNDING_OFF_UNTIL
 
 # Ghim sẵn model cho từng key để khỏi tốn một lần 404 mới học được: đặt
 # GEMINI_MODELS="gemini-2.5-flash,,gemini-3.1-flash-lite" — theo ĐÚNG thứ tự key
@@ -205,8 +216,9 @@ def _gemini_call(prompt, grounded, retries=2):
             kw.pop("thinking_config", None)
             return types.GenerateContentConfig(**kw)
 
-    global _gemini_rr
+    global _gemini_rr, _GROUNDING_OFF_UNTIL
     now = time.time()
+    grounded_429 = 0
     # Ưu tiên key chưa bị treo; nếu treo hết thì cứ thử lại toàn bộ (còn hơn bỏ cuộc).
     pool = [k for k in GEMINI_API_KEYS if _GEMINI_PARKED.get(k, 0) <= now] or list(GEMINI_API_KEYS)
     start = _gemini_rr % len(pool)
@@ -240,6 +252,9 @@ def _gemini_call(prompt, grounded, retries=2):
                     _GEMINI_MODEL_FOR[key] = GEMINI_FALLBACK_MODEL
                     continue
                 if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                    if grounded:
+                        grounded_429 += 1   # hết quota GROUNDING, không phải quota của key
+                        break
                     _park_429(key)          # hết quota -> treo (lâu dần) rồi đổi key
                     break
                 # Key hỏng/bị đình chỉ, hoặc hết model để thử -> treo lâu, đổi key.
@@ -256,6 +271,10 @@ def _gemini_call(prompt, grounded, retries=2):
     # được lúc gọi thường vẫn OK mà bật grounding là 429. Hết grounding thì vẫn còn
     # kiến thức sẵn có của model — dùng tiếp còn hơn rơi thẳng xuống Nominatim.
     if grounded:
+        if grounded_429 == len(pool):
+            _GROUNDING_OFF_UNTIL = time.time() + _GROUNDING_OFF_SEC
+            print(f"[geocode] Google Search grounding 429 trên cả {len(pool)} key -> tắt grounding "
+                  f"{_GROUNDING_OFF_SEC // 60} phút, dùng Gemini thường (key cần bật billing để có grounding)")
         return _gemini_call(prompt, grounded=False, retries=1)
     return None
 
@@ -492,8 +511,9 @@ def _gemini_locations(text, user_lat, user_lng):
     bắt buộc: tắt grounding tránh đúng cái quota nhỏ giọt và chia sẻ chung mọi model/key."""
     if not GEMINI_API_KEYS:
         return None
-    data = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, GEMINI_GROUNDING),
-                                     grounded=GEMINI_GROUNDING, retries=1))
+    grounded = grounding_active()
+    data = _parse_json(_gemini_call(_build_prompt(text, user_lat, user_lng, grounded),
+                                     grounded=grounded, retries=1))
     if not data:
         return None
     out = []
@@ -587,9 +607,20 @@ def _poi_queries(name, map_query="", map_query_alt=""):
         return _plain(s)
     # map_query(_alt) do model tự chuẩn hoá đứng ĐẦU — sửa ở gốc tốt hơn cắt gọt bằng
     # regex; các biến thể sau chỉ là lưới đỡ khi model không trả trường đó.
-    variants = [(map_query or "").strip(), (map_query_alt or "").strip(), _core(nopre),
-                _plain(nopre), _plain(raw), _bare(nopre), _bare(raw), raw]
-    return list(dict.fromkeys([v for v in variants if v]))[:6]
+    # Thứ tự theo tỉ lệ RA KẾT QUẢ đo được: dạng của model, rồi tên TRẦN (hay ra nhất, và _pin
+    # chỉ nhận nó khi khớp vị trí của lựa chọn này), rồi các dạng gọt. Mỗi lần trượt tốn 1.1 s
+    # nên tối đa 5 dạng (đo: 6-7 lần trượt liên tiếp = 13 s cho một địa điểm).
+    variants = [(map_query or "").strip(), (map_query_alt or "").strip(), _core(_bare(nopre)), _bare(nopre),
+                _core(nopre), _plain(nopre), _plain(raw), _bare(raw), raw]
+    # Nominatim không phân biệt hoa/thường: "cơ sở Thủ Đức" và "Cơ sở Thủ Đức" là CÙNG một lần
+    # tra, mỗi lần 1.1 s -> khử trùng không phân biệt hoa/thường.
+    out, seen = [], set()
+    for v in variants:
+        k = v.casefold()
+        if v and k not in seen:
+            seen.add(k)
+            out.append(v)
+    return out[:5]
 
 
 def _drop_coincident(pinned):
@@ -675,11 +706,14 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
         return _haversine_km(a[0], a[1], b[0], b[1]) <= VERIFY_RADIUS_KM
 
     def addr_hit():
-        # Vị trí theo ĐỊA CHỈ chữ của chính lựa chọn này: địa chỉ đầy đủ, rồi số nhà + đường.
-        # KHÔNG tra lại theo phường/quận trơ trọi (xem _street_address).
+        # Vị trí theo ĐỊA CHỈ chữ của chính lựa chọn này — CHỈ khi địa chỉ có số nhà + tên
+        # đường. Địa chỉ cấp phường ("Phường Linh Trung, Thủ Đức") quá thô để làm bằng chứng:
+        # đo được nó trả một POI bất kỳ trong phường ("Trạm Y Tế Phường Linh Trung", lệch 4.5
+        # km khỏi trường) rồi chính điểm đó được ghim với verified=True.
         if not anchor["tried"]:
             anchor["tried"] = True
-            for q in dict.fromkeys([addr.strip(), _street_address(addr)]):
+            street = _street_address(addr)
+            for q in (dict.fromkeys([addr.strip(), street]) if street else ()):
                 if not q:
                     continue
                 a = next((h for h in _nominatim_hits(q, center_lat, center_lng) if within(h)), None)
@@ -688,14 +722,36 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
                     break
         return anchor["hit"]
 
+    coarse = {"pt": None, "tried": False}
+
+    def coarse_pt():
+        # Mốc THÔ theo địa chỉ cấp phường (không số nhà): quá thô để GHIM (đo: lệch 4.5 km)
+        # nhưng đủ để CHỌN giữa các cơ sở cách nhau hàng chục km (KHTN: 18 km). Chỉ dùng
+        # khi không còn bằng chứng nào khác, với bán kính COARSE_KM.
+        if not coarse["tried"]:
+            coarse["tried"] = True
+            # Phường/quận ĐÁNH SỐ kiểu cũ ("Phường 4, Quận 5") làm Nominatim khớp nhầm chữ số
+            # (ra "Hẻm 491/5") -> chỉ dùng khi đơn vị hành chính có TÊN chữ.
+            if addr.strip() and not _street_address(addr) and \
+                    not re.search(r"\b(phường|quận|p\.|q\.)\s*\d+\b", addr, re.IGNORECASE):
+                h = next((x for x in _nominatim_hits(addr.strip(), center_lat, center_lng) if within(x)), None)
+                if h:
+                    coarse["pt"] = (h[0], h[1])
+        return coarse["pt"]
+
     def pick(hits):
         """Kết quả tra TÊN nào là chính nơi này: khớp toạ độ Gemini (nếu đáng tin), không
         thì khớp vị trí theo địa chỉ. Có bằng chứng mà không cái nào khớp = tên đang trỏ
         nơi KHÁC (cơ sở khác của cùng trường; "Landmark 81" -> "PetroVietnam Landmark";
         "Đại học Bách khoa" -> cơ sở kia) -> bỏ. Không có bằng chứng nào: địa điểm đơn thì
         tin tên như trước, một trong nhiều lựa chọn thì không (tên chung dễ là cơ sở khác)."""
-        if g_ok:
-            c = sorted((h for h in hits if near(g_ok, h)), key=lambda h: _haversine_km(g_ok[0], g_ok[1], h[0], h[1]))
+        if g:
+            # Toạ độ Gemini — kể cả khi nằm sát điểm đón — được dùng để XÁC NHẬN một kết quả
+            # tra tên ở gần nó (hai nguồn độc lập cùng chỉ một chỗ). Chỉ không dùng nó để LOẠI
+            # kết quả (xem g_ok). Ca thật: người dùng đứng ở ĐH Quốc tế, tìm KHTN Linh Trung
+            # cách 0.4 km -> toạ độ Gemini đúng nhưng "sát điểm đón", trước đây bị bỏ qua và
+            # kết quả tra tên đúng bị loại.
+            c = sorted((h for h in hits if near(g, h)), key=lambda h: _haversine_km(g[0], g[1], h[0], h[1]))
             if c:
                 return c[0]
         a = addr_hit() if not is_address else None
@@ -706,15 +762,23 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
                 return c[0]
         if is_address or not (g_ok or a or must_agree):
             return hits[0]
+        if must_agree and not g_ok and not a:
+            cp = coarse_pt()
+            if cp:
+                c = sorted((h for h in hits if _haversine_km(cp[0], cp[1], h[0], h[1]) <= COARSE_KM),
+                           key=lambda h: _haversine_km(cp[0], cp[1], h[0], h[1]))
+                if c:
+                    return c[0]
         return None
 
     tries = [primary] if is_address else _poi_queries(name, loc.get("map_query"), loc.get("map_query_alt"))
-    nm, from_addr = None, False
+    nm, from_addr, first_seen = None, False, None
     for q in tries:
         if not q.strip():
             continue
         hits = [h for h in _nominatim_hits(q, center_lat, center_lng) if within(h)]
         if hits:
+            first_seen = first_seen or hits[0]
             nm = pick(hits)
             if nm:
                 break
@@ -746,7 +810,17 @@ def _pin(loc, center_lat, center_lng, is_address=False, pickup=None, one_shot=Fa
             ref = {**mb, "address": mb.get("address") or addr}
 
     if not ref:
-        return loc, False                          # không có gì để đối chiếu
+        # Không có gì để đối chiếu. Nếu toạ độ Gemini đã bị loại vì chép điểm đón, ĐỪNG trả
+        # lại chính điểm đón (ca thật: "cách 0 km") — dùng kết quả tra tên đầu tiên, vẫn để
+        # verified=False (lúc người dùng chọn, _do_select tra lại lựa chọn chưa xác minh).
+        if g is None and isinstance(loc.get("lat"), (int, float)):
+            cp = coarse_pt() if not is_address else None
+            if cp:
+                return {**loc, "lat": cp[0], "lng": cp[1]}, False
+            if first_seen:
+                return {**loc, "lat": first_seen[0], "lng": first_seen[1],
+                        "address": _short_address(first_seen[2], loc.get("name") or "")}, False
+        return loc, False
     final_addr = _short_address(ref.get("address"), loc["name"])
     ref_pt = (ref["lat"], ref["lng"])
     if g_ok and not is_address and not from_addr and _haversine_km(g_ok[0], g_ok[1], ref["lat"], ref["lng"]) <= 0.3:
@@ -800,7 +874,37 @@ def verify_location(loc, user_lat=None, user_lng=None, is_address=False):
     return out
 
 
+_RESOLVE_CACHE = {}      # (câu nói chuẩn hoá, ô điểm đón ~1 km) -> (hết hạn, kết quả)
+_RESOLVE_TTL = 6 * 3600
+
+
 def resolve_locations(text, user_lat=None, user_lng=None):
+    """Giải mã địa điểm nói ra -> 1..N vị trí thật; nhớ kết quả 6 giờ theo (câu nói, ô ~1 km
+    quanh điểm đón). Bỏ danh bạ viết cứng làm MỌI lượt phải qua Gemini (~3-5 s) + Nominatim
+    (1.1 s/lần, tuần tự): nơi đã tìm một lần thì lần sau trả ngay. Đây là kết quả geocoder
+    thật đã chốt, không phải danh bạ viết tay. Không nhớ lượt thất bại."""
+    if not (text or "").strip():
+        return {"ok": False, "reason": "empty"}
+    c_lat = user_lat if user_lat is not None else DEFAULT_CENTER[0]
+    c_lng = user_lng if user_lng is not None else DEFAULT_CENTER[1]
+    key = (" ".join(text.casefold().split()), round(c_lat, 2), round(c_lng, 2))
+    hit = _RESOLVE_CACHE.get(key)
+    if hit and hit[0] > time.time():
+        r = copy.deepcopy(hit[1])
+        for l in r.get("locations", []):
+            if user_lat is not None and l.get("lat") is not None:
+                l["distanceKm"] = round(_haversine_km(user_lat, user_lng, l["lat"], l["lng"]), 1)
+        r["cached"] = True
+        return r
+    r = _resolve_locations_uncached(text, user_lat, user_lng)
+    if r.get("ok"):
+        if len(_RESOLVE_CACHE) > 500:
+            _RESOLVE_CACHE.clear()
+        _RESOLVE_CACHE[key] = (time.time() + _RESOLVE_TTL, copy.deepcopy(r))
+    return r
+
+
+def _resolve_locations_uncached(text, user_lat=None, user_lng=None):
     """Giải mã một địa điểm nói ra thành 1..N vị trí thật (chi nhánh/cơ sở).
 
     Gemini (grounded) là bộ não chính — nó xử được địa điểm bất kỳ, không hardcode.
