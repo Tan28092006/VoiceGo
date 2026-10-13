@@ -7,7 +7,7 @@
 # rỗng, nên thiếu key thì server vẫn khởi động bình thường mà giọng nói không hoạt động.
 
 set -u
-BASE="${1:-https://voicego.res3pl.com}"
+BASE="${1:-https://voicego-9k11.onrender.com}"   # voicego.res3pl.com: NXDOMAIN (10/2026)
 PASS=0; FAIL=0
 
 check() { # tên | mã mong đợi | đường dẫn

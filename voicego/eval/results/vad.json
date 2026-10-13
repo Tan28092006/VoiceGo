@@ -1,0 +1,2423 @@
+{
+ "eval": "vad",
+ "at": "2026-10-13T03:21:51.894Z",
+ "src": {
+  "src/services/liveStt.js": "36a331f3ef1bf8ebea7fed540a6b7f5360bd06a2",
+  "src/services/voiceRecorder.js": "72fb385c0303860e1ba21449d9310c4da372d9f7",
+  "src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+  "src/hooks/useVoiceApp.js": "04150593b222668956dc93d4008eef8a123216f3",
+  "head": "f3c11fe"
+ },
+ "frame_ms": 85.33333333333333,
+ "scenarios": {
+  "Q1": {
+   "group": "phòng yên tĩnh",
+   "desc": "giọng bình thường 0.02, AI im",
+   "seeds": 12,
+   "nUtt": 24,
+   "detected": 0.75,
+   "latency": [
+    1195,
+    683,
+    683,
+    1024,
+    1024,
+    768,
+    768,
+    683,
+    683,
+    683,
+    683,
+    1195,
+    1195,
+    683,
+    683,
+    1024,
+    1024,
+    768
+   ],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": null,
+   "endMs": [
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 18,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    }
+   ]
+  },
+  "Q2": {
+   "group": "phòng yên tĩnh",
+   "desc": "giọng nhỏ 0.006",
+   "seeds": 12,
+   "nUtt": 24,
+   "detected": 0.4166666666666667,
+   "latency": [
+    1877,
+    1621,
+    939,
+    768,
+    768,
+    1024,
+    1024,
+    1877,
+    1877,
+    1621
+   ],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": null,
+   "endMs": [
+    939,
+    853,
+    853,
+    -1536,
+    -1536,
+    853,
+    853,
+    939,
+    939,
+    853
+   ],
+   "capped": 0,
+   "nEnds": 10,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    }
+   ]
+  },
+  "Q3": {
+   "group": "phòng yên tĩnh",
+   "desc": "giọng rất nhỏ / xa máy 0.003",
+   "seeds": 12,
+   "nUtt": 24,
+   "detected": 0,
+   "latency": [],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": null,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": false
+    }
+   ]
+  },
+  "Q4": {
+   "group": "phòng yên tĩnh",
+   "desc": "lệnh 1 từ 'Không' (3 khung) rồi 'Dừng lại' (7 khung), 0.02",
+   "seeds": 12,
+   "nUtt": 24,
+   "detected": 0,
+   "latency": [],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": null,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    }
+   ]
+  },
+  "Q5": {
+   "group": "phòng yên tĩnh",
+   "desc": "không ai nói, ho (3 khung 0.08) mỗi 6s + cộp (1 khung 0.2) mỗi 4s",
+   "seeds": 4,
+   "nUtt": 0,
+   "detected": null,
+   "latency": [],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": null,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": []
+  },
+  "N1": {
+   "group": "đường phố ồn",
+   "desc": "không ai nói; ồn 0.005 dao động mạnh + xe máy 2s 0.025 mỗi 15s",
+   "seeds": 4,
+   "nUtt": 0,
+   "detected": null,
+   "latency": [],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 4.000711237553343,
+   "stallSecPerMin": null,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": []
+  },
+  "N2": {
+   "group": "đường phố ồn",
+   "desc": "giọng 0.03 trên nền phố",
+   "seeds": 12,
+   "nUtt": 24,
+   "detected": 0.7083333333333334,
+   "latency": [
+    1280,
+    683,
+    683,
+    1365,
+    1536,
+    939,
+    768,
+    683,
+    683,
+    683,
+    683,
+    1280,
+    1280,
+    683,
+    1365,
+    1195,
+    939
+   ],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": null,
+   "endMs": [
+    939,
+    853,
+    853,
+    939,
+    853,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    853,
+    853,
+    939,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 17,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    }
+   ]
+  },
+  "N3": {
+   "group": "đường phố ồn",
+   "desc": "giọng 0.015 trên nền phố",
+   "seeds": 12,
+   "nUtt": 24,
+   "detected": 0.125,
+   "latency": [
+    939,
+    683,
+    939
+   ],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": null,
+   "endMs": [
+    683,
+    853,
+    -171
+   ],
+   "capped": 0,
+   "nEnds": 3,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 1,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 1,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    }
+   ]
+  },
+  "N4": {
+   "group": "đường phố ồn",
+   "desc": "người dùng nói xong thì tiếng ồn 0.03 kéo dài (xe buýt đứng cạnh) — ồn LUÔN trên ngưỡng",
+   "seeds": 6,
+   "nUtt": 6,
+   "detected": 1,
+   "latency": [
+    683,
+    683,
+    683,
+    683,
+    683,
+    683
+   ],
+   "falseTtsPerMin": null,
+   "falseIdlePerMin": 1.9975142045454546,
+   "stallSecPerMin": null,
+   "endMs": [
+    19541,
+    19541,
+    19541,
+    19541,
+    19541,
+    19541
+   ],
+   "capped": 6,
+   "nEnds": 6,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    }
+   ]
+  },
+  "T1": {
+   "group": "AI đang đọc, CÓ AEC",
+   "desc": "tiếng vọng còn rò 0.003, không ai nói",
+   "seeds": 4,
+   "nUtt": 0,
+   "detected": null,
+   "latency": [],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": null,
+   "stallSecPerMin": 0,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": []
+  },
+  "T2": {
+   "group": "AI đang đọc, CÓ AEC",
+   "desc": "người dùng chen ngang 0.02",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0.9166666666666666,
+   "latency": [
+    1024,
+    427,
+    427,
+    1280,
+    512,
+    427,
+    427,
+    1024,
+    427,
+    427,
+    1280
+   ],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": 0,
+   "endMs": [
+    939,
+    853,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    853,
+    939,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 11,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    }
+   ]
+  },
+  "T3": {
+   "group": "AI đang đọc, CÓ AEC",
+   "desc": "chen ngang bằng lệnh 1 từ 'Không' 0.02",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0,
+   "latency": [],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": null,
+   "stallSecPerMin": 0,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    }
+   ]
+  },
+  "T4": {
+   "group": "AI đang đọc, CÓ AEC",
+   "desc": "ho/cộp lúc AI đọc, không ai nói",
+   "seeds": 4,
+   "nUtt": 0,
+   "detected": null,
+   "latency": [],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": null,
+   "stallSecPerMin": 0,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": []
+  },
+  "T5": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "tiếng vọng 0.02, không ai nói",
+   "seeds": 4,
+   "nUtt": 0,
+   "detected": null,
+   "latency": [],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": null,
+   "stallSecPerMin": 0,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": []
+  },
+  "T6": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "tiếng vọng 0.04 (loa ngoài to), không ai nói",
+   "seeds": 4,
+   "nUtt": 0,
+   "detected": null,
+   "latency": [],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": null,
+   "stallSecPerMin": 0,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": []
+  },
+  "T7": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "vọng 0.02, người dùng 0.04 (to gấp 2)",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0.9166666666666666,
+   "latency": [
+    1024,
+    427,
+    427,
+    427,
+    512,
+    512,
+    597,
+    1024,
+    427,
+    597,
+    1536
+   ],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": 0,
+   "endMs": [
+    939,
+    853,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    853,
+    939,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 11,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    }
+   ]
+  },
+  "T8": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "vọng 0.02, người dùng 0.02 (bằng tiếng vọng)",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0.25,
+   "latency": [
+    512,
+    1963,
+    683
+   ],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": 0,
+   "endMs": [
+    853,
+    939,
+    1024
+   ],
+   "capped": 0,
+   "nEnds": 3,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": false
+    }
+   ]
+  },
+  "T9": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "vọng 0.02, người dùng 0.01 (nhỏ hơn tiếng vọng)",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0,
+   "latency": [],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": null,
+   "stallSecPerMin": 0,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": false
+    }
+   ]
+  },
+  "T10": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "vọng 0.04, người dùng 0.06 (to gấp 1.5)",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0.5833333333333334,
+   "latency": [
+    853,
+    597,
+    512,
+    512,
+    427,
+    427,
+    427
+   ],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": 0,
+   "endMs": [
+    939,
+    939,
+    939,
+    939,
+    939,
+    853,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 7,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": false
+    }
+   ]
+  },
+  "T11": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "vọng 0.01 trong 3s đầu rồi tăng lên 0.03 (đưa máy lại gần / tăng âm lượng)",
+   "seeds": 4,
+   "nUtt": 0,
+   "detected": null,
+   "latency": [],
+   "falseTtsPerMin": 1.0001778093883358,
+   "falseIdlePerMin": null,
+   "stallSecPerMin": 1.2802275960170695,
+   "endMs": [],
+   "capped": 0,
+   "nEnds": 0,
+   "utts": []
+  },
+  "T12": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "người dùng chen ngang 0.5s sau khi AI bắt đầu (TRƯỚC khi mic mở lúc 1s), vọng 0.02, giọng 0.04",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0.5833333333333334,
+   "latency": [
+    1024,
+    1280,
+    1024,
+    1024,
+    1109,
+    1024,
+    1280
+   ],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": 0,
+   "endMs": [
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 7,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    }
+   ]
+  },
+  "T13": {
+   "group": "AI đang đọc, CÓ AEC",
+   "desc": "người dùng chen ngang 0.5s sau khi AI bắt đầu (trước khi mic mở), vọng 0.003, giọng 0.02",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0.5833333333333334,
+   "latency": [
+    1024,
+    1280,
+    1024,
+    939,
+    939,
+    1024,
+    1280
+   ],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": 0,
+   "endMs": [
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 7,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": true,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": true,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": true,
+     "detected": true
+    }
+   ]
+  },
+  "T14": {
+   "group": "AI đang đọc, KHÔNG AEC",
+   "desc": "AI đọc 0-5s (vọng 0.02) rồi im; người dùng đáp ngay lúc 5.3s, giọng 0.02",
+   "seeds": 12,
+   "nUtt": 12,
+   "detected": 0.75,
+   "latency": [
+    1195,
+    683,
+    1024,
+    768,
+    683,
+    683,
+    1195,
+    683,
+    1024
+   ],
+   "falseTtsPerMin": 0,
+   "falseIdlePerMin": 0,
+   "stallSecPerMin": 0,
+   "endMs": [
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939,
+    939
+   ],
+   "capped": 0,
+   "nEnds": 9,
+   "utts": [
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 5,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 3,
+     "env": 6,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 45,
+     "env": 7,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 14,
+     "env": 0,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 24,
+     "env": 1,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 7,
+     "env": 2,
+     "inTts": false,
+     "detected": false
+    },
+    {
+     "i": 0,
+     "frames": 9,
+     "env": 3,
+     "inTts": false,
+     "detected": true
+    },
+    {
+     "i": 0,
+     "frames": 19,
+     "env": 4,
+     "inTts": false,
+     "detected": true
+    }
+   ]
+  }
+ }
+}

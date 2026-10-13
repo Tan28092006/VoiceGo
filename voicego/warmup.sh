@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # VoiceGo — đánh thức service Render Free trước giờ demo/chấm.
 #   bash voicego/warmup.sh                          (mặc định: bản production)
-#   bash voicego/warmup.sh https://voicego.res3pl.com
+#   bash voicego/warmup.sh https://voicego-9k11.onrender.com
 #
 # Render Free ngủ sau 15 phút không có traffic, request đầu tiên chờ ~1 phút.
 # Script này chịu cái chờ đó THAY CHO ban giám khảo.
@@ -12,7 +12,7 @@
 # thức là 1488h -> cháy quota giữa tháng. Xem DEPLOY_DOMAIN.md Phần A.)
 
 set -u
-BASE="${1:-https://voicego.res3pl.com}"
+BASE="${1:-https://voicego-9k11.onrender.com}"   # voicego.res3pl.com: NXDOMAIN (10/2026)
 DEADLINE=$((SECONDS + 180))
 
 echo "Đánh thức: $BASE"

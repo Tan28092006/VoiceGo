@@ -1,0 +1,2690 @@
+{
+ "meta": {
+  "run_id": "20261013T092229-H",
+  "split": "holdout",
+  "sentence_set": "H",
+  "generated_at": "2026-10-13T09:22:29",
+  "model": "gemini-3.5-transcribe-live",
+  "endpoint": "v1beta BidiGenerateContent (?key=)",
+  "custom_vocabulary": true,
+  "ai_voice": "vi-VN-HoaiMyNeural",
+  "user_voice": "vi-VN-NamMinhNeural",
+  "echo_filter": "highpass=f=300,lowpass=f=3400,aecho=0.8:0.6:25|60:0.25|0.15",
+  "preroll_s": 1.024,
+  "vad_tts_s": 0.42666666666666664,
+  "vad_s": 0.6826666666666666,
+  "sessions": 18,
+  "repeat": 1,
+  "repeat_subset": [
+   "echo_p_g07_A1",
+   "echo_p_g03_A2",
+   "barge_p_g03_A2",
+   "after_g035_A1"
+  ],
+  "src_hashes": {
+   "voicego/frontend/src/services/liveStt.js": "1ef2ca0120f2d6da90ce3c58e37555c9ff296bbf",
+   "voicego/frontend/src/services/voiceRecorder.js": "21c39bf6e2ba8a0d3bcee07c928780ef72270e0f",
+   "voicego/frontend/src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+   "voicego/frontend/src/hooks/useVoiceApp.js": "7817aab5a1d1fa9a65b143fd12897553dfdaea83",
+   "voicego/eval/live/live_echo_eval.py": "761550c719edf6f654586c743697e9b982b12d38",
+   "voicego/eval/live/_audio.py": "4d8b567c65ee441642dbb0b9fe0856abb3247071",
+   "head": "f3c11fe"
+  },
+  "note": "t_ms trong finals/interims tính từ t_vad (lúc xả tiền ghi). source=live: transcript Gemini thật trên giọng TTS tổng hợp.",
+  "attempted": 18,
+  "errored": 1
+ },
+ "cases": [
+  {
+   "id": "echo_p_g03_H1",
+   "condition": "echo_p_g03",
+   "sentence": "H1",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.3,
+   "user_gain": 0.0,
+   "ai_text": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "xe máy tới bệnh viện Chợ Rẫy cho",
+   "echo_text_interp": "xe máy tới bệnh viện Chợ Rẫy",
+   "echo_words_t": [
+    [
+     "xe",
+     -1683
+    ],
+    [
+     "máy",
+     -1496
+    ],
+    [
+     "tới",
+     -1246
+    ],
+    [
+     "bệnh",
+     -1021
+    ],
+    [
+     "viện",
+     -833
+    ],
+    [
+     "Chợ",
+     -558
+    ],
+    [
+     "Rẫy",
+     -333
+    ],
+    [
+     "cho",
+     -96
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "xe",
+     -1584
+    ],
+    [
+     "máy",
+     -1397
+    ],
+    [
+     "tới",
+     -1148
+    ],
+    [
+     "bệnh",
+     -898
+    ],
+    [
+     "viện",
+     -586
+    ],
+    [
+     "Chợ",
+     -274
+    ],
+    [
+     "Rẫy",
+     -25
+    ]
+   ],
+   "clip": {
+    "start_s": 1.122,
+    "vad_s": 2.146,
+    "end_s": 3.096,
+    "dur_s": 1.974,
+    "ai_dur_s": 5.364,
+    "speech_end_ms": 0,
+    "user_onset_s": null,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_p_g03_H1_r1",
+   "error": null,
+   "setup_ms": 405,
+   "transcript": "bệnh viện Chợ Rẫy",
+   "finals": [
+    {
+     "t_ms": 1883,
+     "text": "bệnh viện Chợ Rẫy"
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 1010,
+     "text": "bệnh viện"
+    },
+    {
+     "t_ms": 1218,
+     "text": "bệnh viện Chợ"
+    },
+    {
+     "t_ms": 1523,
+     "text": "bệnh viện Chợ Rẫy"
+    },
+    {
+     "t_ms": 1825,
+     "text": "bệnh viện Chợ Rẫy"
+    }
+   ],
+   "generation_complete_ms": [
+    1883
+   ],
+   "activity": [
+    {
+     "t_ms": 394,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1883,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 1009,
+    "first_final_after_end_ms": 874,
+    "last_final_after_end_ms": 874,
+    "gen_complete_after_end_ms": 874,
+    "app_done_after_end_ms": 874,
+    "app_done_reason": "generationComplete",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "echo_p_g07_H1",
+   "condition": "echo_p_g07",
+   "sentence": "H1",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.7,
+   "user_gain": 0.0,
+   "ai_text": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "Chợ Rẫy cho bạn nhé, giá khoảng",
+   "echo_text_interp": "viện Chợ Rẫy cho bạn nhé, giá",
+   "echo_words_t": [
+    [
+     "Chợ",
+     -1631
+    ],
+    [
+     "Rẫy",
+     -1406
+    ],
+    [
+     "cho",
+     -1168
+    ],
+    [
+     "bạn",
+     -1006
+    ],
+    [
+     "nhé,",
+     -781
+    ],
+    [
+     "giá",
+     -256
+    ],
+    [
+     "khoảng",
+     -56
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "viện",
+     -1659
+    ],
+    [
+     "Chợ",
+     -1347
+    ],
+    [
+     "Rẫy",
+     -1098
+    ],
+    [
+     "cho",
+     -848
+    ],
+    [
+     "bạn",
+     -599
+    ],
+    [
+     "nhé,",
+     -349
+    ],
+    [
+     "giá",
+     -37
+    ]
+   ],
+   "clip": {
+    "start_s": 2.194,
+    "vad_s": 3.218,
+    "end_s": 4.168,
+    "dur_s": 1.974,
+    "ai_dur_s": 5.364,
+    "speech_end_ms": 0,
+    "user_onset_s": null,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_p_g07_H1_r1",
+   "error": null,
+   "setup_ms": 328,
+   "transcript": "Chào bạn nhé.",
+   "finals": [
+    {
+     "t_ms": 1394,
+     "text": "Chào bạn nhé."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 506,
+     "text": "cho bạn"
+    },
+    {
+     "t_ms": 658,
+     "text": "cho bạn nhé."
+    },
+    {
+     "t_ms": 774,
+     "text": "cho bạn nhé."
+    },
+    {
+     "t_ms": 1105,
+     "text": "cho bạn nhé."
+    }
+   ],
+   "generation_complete_ms": [
+    1394
+   ],
+   "activity": [
+    {
+     "t_ms": 305,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1394,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 1002,
+    "first_final_after_end_ms": 392,
+    "last_final_after_end_ms": 392,
+    "gen_complete_after_end_ms": 392,
+    "app_done_after_end_ms": 392,
+    "app_done_reason": "generationComplete",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "echo_full_g05_H1",
+   "condition": "echo_full_g05",
+   "sentence": "H1",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.5,
+   "user_gain": 0.0,
+   "ai_text": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "echo_text_interp": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "echo_words_t": [
+    [
+     "Mình",
+     -1484
+    ],
+    [
+     "đặt",
+     -1297
+    ],
+    [
+     "xe",
+     -1147
+    ],
+    [
+     "máy",
+     -959
+    ],
+    [
+     "tới",
+     -709
+    ],
+    [
+     "bệnh",
+     -484
+    ],
+    [
+     "viện",
+     -297
+    ],
+    [
+     "Chợ",
+     -22
+    ],
+    [
+     "Rẫy",
+     203
+    ],
+    [
+     "cho",
+     441
+    ],
+    [
+     "bạn",
+     603
+    ],
+    [
+     "nhé,",
+     828
+    ],
+    [
+     "giá",
+     1353
+    ],
+    [
+     "khoảng",
+     1553
+    ],
+    [
+     "hai",
+     1791
+    ],
+    [
+     "mươi",
+     1953
+    ],
+    [
+     "tám",
+     2103
+    ],
+    [
+     "nghìn",
+     2341
+    ],
+    [
+     "đồng.",
+     2578
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Mình",
+     -1609
+    ],
+    [
+     "đặt",
+     -1297
+    ],
+    [
+     "xe",
+     -1048
+    ],
+    [
+     "máy",
+     -861
+    ],
+    [
+     "tới",
+     -611
+    ],
+    [
+     "bệnh",
+     -362
+    ],
+    [
+     "viện",
+     -50
+    ],
+    [
+     "Chợ",
+     262
+    ],
+    [
+     "Rẫy",
+     511
+    ],
+    [
+     "cho",
+     761
+    ],
+    [
+     "bạn",
+     1010
+    ],
+    [
+     "nhé,",
+     1260
+    ],
+    [
+     "giá",
+     1572
+    ],
+    [
+     "khoảng",
+     1821
+    ],
+    [
+     "hai",
+     2258
+    ],
+    [
+     "mươi",
+     2507
+    ],
+    [
+     "tám",
+     2819
+    ],
+    [
+     "nghìn",
+     3069
+    ],
+    [
+     "đồng.",
+     3443
+    ]
+   ],
+   "clip": {
+    "start_s": 0.585,
+    "vad_s": 1.609,
+    "end_s": 6.314,
+    "dur_s": 5.729,
+    "ai_dur_s": 5.364,
+    "speech_end_ms": 3755,
+    "user_onset_s": null,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_full_g05_H1_r1",
+   "error": null,
+   "setup_ms": 496,
+   "transcript": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng 28.000 đồng.",
+   "finals": [
+    {
+     "t_ms": 4340,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng 28.000 đồng."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 768,
+     "text": "xe máy"
+    },
+    {
+     "t_ms": 876,
+     "text": "Xe máy tới bệnh viện"
+    },
+    {
+     "t_ms": 1236,
+     "text": "Xe máy tới bệnh viện"
+    },
+    {
+     "t_ms": 1353,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho"
+    },
+    {
+     "t_ms": 1634,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé."
+    },
+    {
+     "t_ms": 2110,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé."
+    },
+    {
+     "t_ms": 2664,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé. Giá khoảng 20"
+    },
+    {
+     "t_ms": 3908,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé. Giá khoảng 28.000"
+    },
+    {
+     "t_ms": 3908,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé. Giá khoảng 28.000đ."
+    },
+    {
+     "t_ms": 3952,
+     "text": "Xe máy tới bệnh viện Chợ Rẫy cho bạn nhé. Giá khoảng 28.000đ."
+    }
+   ],
+   "generation_complete_ms": [
+    4340
+   ],
+   "activity": [
+    {
+     "t_ms": 280,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 4340,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 4810,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "barge_p_g03_H1",
+   "condition": "barge_p_g03",
+   "sentence": "H1",
+   "label": "user_barge",
+   "tts_active": true,
+   "gain": 0.3,
+   "user_gain": 1.0,
+   "ai_text": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "user_text": "Khoan, cho mình đổi sang ô tô",
+   "expected_user": "Khoan, cho mình đổi sang ô tô",
+   "echo_text": "bệnh viện Chợ Rẫy cho bạn nhé,",
+   "echo_text_interp": "bệnh viện Chợ Rẫy cho bạn",
+   "echo_words_t": [
+    [
+     "bệnh",
+     -1715
+    ],
+    [
+     "viện",
+     -1528
+    ],
+    [
+     "Chợ",
+     -1253
+    ],
+    [
+     "Rẫy",
+     -1028
+    ],
+    [
+     "cho",
+     -790
+    ],
+    [
+     "bạn",
+     -628
+    ],
+    [
+     "nhé,",
+     -403
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "bệnh",
+     -1593
+    ],
+    [
+     "viện",
+     -1281
+    ],
+    [
+     "Chợ",
+     -969
+    ],
+    [
+     "Rẫy",
+     -720
+    ],
+    [
+     "cho",
+     -470
+    ],
+    [
+     "bạn",
+     -221
+    ]
+   ],
+   "clip": {
+    "start_s": 1.816,
+    "vad_s": 2.84,
+    "end_s": 6.166,
+    "dur_s": 4.349,
+    "ai_dur_s": 5.364,
+    "speech_end_ms": 2525,
+    "user_onset_s": 2.414,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "barge_p_g03_H1_r1",
+   "error": null,
+   "setup_ms": 321,
+   "transcript": "Khoan, cho mình đổi sang ô tô.",
+   "finals": [
+    {
+     "t_ms": 3032,
+     "text": "Khoan, cho mình đổi sang ô tô."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 495,
+     "text": "bệnh viện Chợ Rẫy"
+    },
+    {
+     "t_ms": 664,
+     "text": "để chỉ cho bạn nhé."
+    },
+    {
+     "t_ms": 775,
+     "text": "Khoan."
+    },
+    {
+     "t_ms": 1121,
+     "text": "Khoan, cho mình"
+    },
+    {
+     "t_ms": 1596,
+     "text": "Khoan, cho mình đổi sang"
+    },
+    {
+     "t_ms": 2121,
+     "text": "Khoan, cho mình đổi sang ô tô."
+    },
+    {
+     "t_ms": 2629,
+     "text": "Khoan, cho mình đổi sang ô tô."
+    }
+   ],
+   "generation_complete_ms": [
+    3032
+   ],
+   "activity": [
+    {
+     "t_ms": 226,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 3032,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 3414,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "barge_p_g07_uq_H1",
+   "condition": "barge_p_g07_uq",
+   "sentence": "H1",
+   "label": "user_barge",
+   "tts_active": true,
+   "gain": 0.7,
+   "user_gain": 0.6,
+   "ai_text": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "user_text": "Khoan, cho mình đổi sang ô tô",
+   "expected_user": "Khoan, cho mình đổi sang ô tô",
+   "echo_text": "máy tới bệnh viện Chợ Rẫy cho bạn",
+   "echo_text_interp": "xe máy tới bệnh viện Chợ Rẫy",
+   "echo_words_t": [
+    [
+     "máy",
+     -1654
+    ],
+    [
+     "tới",
+     -1404
+    ],
+    [
+     "bệnh",
+     -1179
+    ],
+    [
+     "viện",
+     -992
+    ],
+    [
+     "Chợ",
+     -717
+    ],
+    [
+     "Rẫy",
+     -492
+    ],
+    [
+     "cho",
+     -254
+    ],
+    [
+     "bạn",
+     -92
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "xe",
+     -1743
+    ],
+    [
+     "máy",
+     -1556
+    ],
+    [
+     "tới",
+     -1306
+    ],
+    [
+     "bệnh",
+     -1057
+    ],
+    [
+     "viện",
+     -745
+    ],
+    [
+     "Chợ",
+     -433
+    ],
+    [
+     "Rẫy",
+     -183
+    ]
+   ],
+   "clip": {
+    "start_s": 1.28,
+    "vad_s": 2.304,
+    "end_s": 5.629,
+    "dur_s": 4.349,
+    "ai_dur_s": 5.364,
+    "speech_end_ms": 2525,
+    "user_onset_s": 1.877,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "barge_p_g07_uq_H1_r1",
+   "error": "timed out during opening handshake"
+  },
+  {
+   "id": "after_g035_H1",
+   "condition": "after_g035",
+   "sentence": "H1",
+   "label": "user_after_ai",
+   "tts_active": true,
+   "gain": 0.35,
+   "user_gain": 1.0,
+   "ai_text": "Mình đặt xe máy tới bệnh viện Chợ Rẫy cho bạn nhé, giá khoảng hai mươi tám nghìn đồng.",
+   "user_text": "Được, đặt luôn đi",
+   "expected_user": "Được, đặt luôn đi",
+   "echo_text": "mươi tám nghìn đồng.",
+   "echo_text_interp": "khoảng hai mươi tám nghìn đồng.",
+   "echo_words_t": [
+    [
+     "mươi",
+     -1664
+    ],
+    [
+     "tám",
+     -1514
+    ],
+    [
+     "nghìn",
+     -1277
+    ],
+    [
+     "đồng.",
+     -1039
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "khoảng",
+     -1796
+    ],
+    [
+     "hai",
+     -1360
+    ],
+    [
+     "mươi",
+     -1110
+    ],
+    [
+     "tám",
+     -798
+    ],
+    [
+     "nghìn",
+     -549
+    ],
+    [
+     "đồng.",
+     -175
+    ]
+   ],
+   "clip": {
+    "start_s": 4.203,
+    "vad_s": 5.227,
+    "end_s": 7.976,
+    "dur_s": 3.773,
+    "ai_dur_s": 5.364,
+    "speech_end_ms": 1949,
+    "user_onset_s": 4.8,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "after_g035_H1_r1",
+   "error": null,
+   "setup_ms": 284,
+   "transcript": "Được, đặt luôn đi.",
+   "finals": [
+    {
+     "t_ms": 2646,
+     "text": "Được, đặt luôn đi."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 460,
+     "text": "đồng ý"
+    },
+    {
+     "t_ms": 552,
+     "text": "đồng"
+    },
+    {
+     "t_ms": 736,
+     "text": "Được."
+    },
+    {
+     "t_ms": 1080,
+     "text": "Được, đặt"
+    },
+    {
+     "t_ms": 1633,
+     "text": "Được, đặt luôn đi."
+    },
+    {
+     "t_ms": 2046,
+     "text": "Được, đặt luôn đi."
+    }
+   ],
+   "generation_complete_ms": [
+    2646
+   ],
+   "activity": [
+    {
+     "t_ms": 165,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2646,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2813,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "echo_p_g03_H2",
+   "condition": "echo_p_g03",
+   "sentence": "H2",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.3,
+   "user_gain": 0.0,
+   "ai_text": "Hiện có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "xế gần bạn, xe đầu tiên",
+   "echo_text_interp": "tài xế gần bạn, xe đầu",
+   "echo_words_t": [
+    [
+     "xế",
+     -1704
+    ],
+    [
+     "gần",
+     -1404
+    ],
+    [
+     "bạn,",
+     -1192
+    ],
+    [
+     "xe",
+     -629
+    ],
+    [
+     "đầu",
+     -429
+    ],
+    [
+     "tiên",
+     -217
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "tài",
+     -1753
+    ],
+    [
+     "xế",
+     -1426
+    ],
+    [
+     "gần",
+     -1180
+    ],
+    [
+     "bạn,",
+     -852
+    ],
+    [
+     "xe",
+     -442
+    ],
+    [
+     "đầu",
+     -197
+    ]
+   ],
+   "clip": {
+    "start_s": 1.63,
+    "vad_s": 2.654,
+    "end_s": 3.604,
+    "dur_s": 1.974,
+    "ai_dur_s": 6.636,
+    "speech_end_ms": 0,
+    "user_onset_s": null,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_p_g03_H2_r1",
+   "error": null,
+   "setup_ms": 312,
+   "transcript": "xe đầu tiên",
+   "finals": [
+    {
+     "t_ms": 1314,
+     "text": "xe đầu tiên"
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 558,
+     "text": "Xe"
+    },
+    {
+     "t_ms": 711,
+     "text": "Xe đầu tiên."
+    },
+    {
+     "t_ms": 993,
+     "text": "Xe đầu tiên."
+    }
+   ],
+   "generation_complete_ms": [
+    1314
+   ],
+   "activity": [
+    {
+     "t_ms": 332,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1314,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 1012,
+    "first_final_after_end_ms": 302,
+    "last_final_after_end_ms": 302,
+    "gen_complete_after_end_ms": 302,
+    "app_done_after_end_ms": 302,
+    "app_done_reason": "generationComplete",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "echo_p_g07_H2",
+   "condition": "echo_p_g07",
+   "sentence": "H2",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.7,
+   "user_gain": 0.0,
+   "ai_text": "Hiện có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "đầu tiên cách khoảng bốn trăm mét.",
+   "echo_text_interp": "xe đầu tiên cách khoảng",
+   "echo_words_t": [
+    [
+     "đầu",
+     -1757
+    ],
+    [
+     "tiên",
+     -1544
+    ],
+    [
+     "cách",
+     -1319
+    ],
+    [
+     "khoảng",
+     -1144
+    ],
+    [
+     "bốn",
+     -882
+    ],
+    [
+     "trăm",
+     -657
+    ],
+    [
+     "mét.",
+     -482
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "xe",
+     -1770
+    ],
+    [
+     "đầu",
+     -1524
+    ],
+    [
+     "tiên",
+     -1196
+    ],
+    [
+     "cách",
+     -786
+    ],
+    [
+     "khoảng",
+     -377
+    ]
+   ],
+   "clip": {
+    "start_s": 2.958,
+    "vad_s": 3.982,
+    "end_s": 4.932,
+    "dur_s": 1.974,
+    "ai_dur_s": 6.636,
+    "speech_end_ms": 0,
+    "user_onset_s": null,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_p_g07_H2_r1",
+   "error": null,
+   "setup_ms": 458,
+   "transcript": "khoảng 400 m",
+   "finals": [
+    {
+     "t_ms": 1420,
+     "text": "khoảng 400 m"
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 642,
+     "text": "khoảng"
+    },
+    {
+     "t_ms": 663,
+     "text": "khoảng 400 m"
+    },
+    {
+     "t_ms": 772,
+     "text": "khoảng 400 m."
+    },
+    {
+     "t_ms": 1343,
+     "text": "khoảng 400 m."
+    }
+   ],
+   "generation_complete_ms": [
+    1420
+   ],
+   "activity": [
+    {
+     "t_ms": 306,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1420,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 1010,
+    "first_final_after_end_ms": 410,
+    "last_final_after_end_ms": 410,
+    "gen_complete_after_end_ms": 410,
+    "app_done_after_end_ms": 410,
+    "app_done_reason": "generationComplete",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "echo_full_g05_H2",
+   "condition": "echo_full_g05",
+   "sentence": "H2",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.5,
+   "user_gain": 0.0,
+   "ai_text": "Hiện có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "echo_text_interp": "có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "echo_words_t": [
+    [
+     "có",
+     -1628
+    ],
+    [
+     "ba",
+     -1453
+    ],
+    [
+     "tài",
+     -1228
+    ],
+    [
+     "xế",
+     -1041
+    ],
+    [
+     "gần",
+     -741
+    ],
+    [
+     "bạn,",
+     -528
+    ],
+    [
+     "xe",
+     34
+    ],
+    [
+     "đầu",
+     234
+    ],
+    [
+     "tiên",
+     447
+    ],
+    [
+     "cách",
+     672
+    ],
+    [
+     "khoảng",
+     847
+    ],
+    [
+     "bốn",
+     1109
+    ],
+    [
+     "trăm",
+     1334
+    ],
+    [
+     "mét.",
+     1509
+    ],
+    [
+     "Bạn",
+     2634
+    ],
+    [
+     "chọn",
+     2872
+    ],
+    [
+     "xe",
+     3147
+    ],
+    [
+     "nào?",
+     3397
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "có",
+     -1581
+    ],
+    [
+     "ba",
+     -1335
+    ],
+    [
+     "tài",
+     -1090
+    ],
+    [
+     "xế",
+     -762
+    ],
+    [
+     "gần",
+     -516
+    ],
+    [
+     "bạn,",
+     -188
+    ],
+    [
+     "xe",
+     221
+    ],
+    [
+     "đầu",
+     467
+    ],
+    [
+     "tiên",
+     795
+    ],
+    [
+     "cách",
+     1204
+    ],
+    [
+     "khoảng",
+     1614
+    ],
+    [
+     "bốn",
+     2187
+    ],
+    [
+     "trăm",
+     2515
+    ],
+    [
+     "mét.",
+     2925
+    ],
+    [
+     "Bạn",
+     3334
+    ],
+    [
+     "chọn",
+     3662
+    ],
+    [
+     "xe",
+     4072
+    ],
+    [
+     "nào?",
+     4317
+    ]
+   ],
+   "clip": {
+    "start_s": 0.967,
+    "vad_s": 1.991,
+    "end_s": 7.586,
+    "dur_s": 6.619,
+    "ai_dur_s": 6.636,
+    "speech_end_ms": 4645,
+    "user_onset_s": null,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_full_g05_H2_r1",
+   "error": null,
+   "setup_ms": 449,
+   "transcript": "Tài xế gần bạn. Xe đầu tiên cách khoảng 400 m. Bạn chọn xe nào?",
+   "finals": [
+    {
+     "t_ms": 5372,
+     "text": "Tài xế gần bạn. Xe đầu tiên cách khoảng 400 m. Bạn chọn xe nào?"
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 659,
+     "text": "tài xế"
+    },
+    {
+     "t_ms": 755,
+     "text": "tài xế gần bạn"
+    },
+    {
+     "t_ms": 830,
+     "text": "tài xế gần bạn"
+    },
+    {
+     "t_ms": 1306,
+     "text": "tài xế gần bạn. Xe đầu tiên"
+    },
+    {
+     "t_ms": 2036,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng"
+    },
+    {
+     "t_ms": 2257,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng"
+    },
+    {
+     "t_ms": 2637,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng"
+    },
+    {
+     "t_ms": 3118,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng 400 m."
+    },
+    {
+     "t_ms": 3476,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng Bạn chọn"
+    },
+    {
+     "t_ms": 4009,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng Bạn chọn xe nào"
+    },
+    {
+     "t_ms": 4502,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng400 m. Bạn chọn xe nào?"
+    },
+    {
+     "t_ms": 5034,
+     "text": "tài xế gần bạn. Xe đầu tiên cách khoảng400 m. Bạn chọn xe nào?"
+    }
+   ],
+   "generation_complete_ms": [
+    5372
+   ],
+   "activity": [
+    {
+     "t_ms": 319,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 5372,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 5613,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "barge_p_g03_H2",
+   "condition": "barge_p_g03",
+   "sentence": "H2",
+   "label": "user_barge",
+   "tts_active": true,
+   "gain": 0.3,
+   "user_gain": 1.0,
+   "ai_text": "Hiện có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "user_text": "Huỷ chuyến này đi",
+   "expected_user": "Huỷ chuyến này đi",
+   "echo_text": "xe đầu tiên cách khoảng bốn trăm",
+   "echo_text_interp": "bạn, xe đầu tiên cách",
+   "echo_words_t": [
+    [
+     "xe",
+     -1388
+    ],
+    [
+     "đầu",
+     -1188
+    ],
+    [
+     "tiên",
+     -975
+    ],
+    [
+     "cách",
+     -750
+    ],
+    [
+     "khoảng",
+     -575
+    ],
+    [
+     "bốn",
+     -313
+    ],
+    [
+     "trăm",
+     -88
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "bạn,",
+     -1610
+    ],
+    [
+     "xe",
+     -1201
+    ],
+    [
+     "đầu",
+     -955
+    ],
+    [
+     "tiên",
+     -627
+    ],
+    [
+     "cách",
+     -218
+    ]
+   ],
+   "clip": {
+    "start_s": 2.389,
+    "vad_s": 3.413,
+    "end_s": 5.778,
+    "dur_s": 3.389,
+    "ai_dur_s": 6.636,
+    "speech_end_ms": 1565,
+    "user_onset_s": 2.986,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "barge_p_g03_H2_r1",
+   "error": null,
+   "setup_ms": 252,
+   "transcript": "Huỷ chuyến này đi.",
+   "finals": [
+    {
+     "t_ms": 1993,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 414,
+     "text": "đầu tiên"
+    },
+    {
+     "t_ms": 533,
+     "text": "đầu tiên cách khoảng"
+    },
+    {
+     "t_ms": 671,
+     "text": "Huỷ chuyến."
+    },
+    {
+     "t_ms": 1093,
+     "text": "Huỷ chuyến này đi."
+    },
+    {
+     "t_ms": 1593,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "generation_complete_ms": [
+    1993
+   ],
+   "activity": [
+    {
+     "t_ms": 193,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1993,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2411,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "barge_p_g07_uq_H2",
+   "condition": "barge_p_g07_uq",
+   "sentence": "H2",
+   "label": "user_barge",
+   "tts_active": true,
+   "gain": 0.7,
+   "user_gain": 0.6,
+   "ai_text": "Hiện có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "user_text": "Huỷ chuyến này đi",
+   "expected_user": "Huỷ chuyến này đi",
+   "echo_text": "xế gần bạn, xe đầu tiên cách",
+   "echo_text_interp": "xế gần bạn, xe đầu",
+   "echo_words_t": [
+    [
+     "xế",
+     -1799
+    ],
+    [
+     "gần",
+     -1499
+    ],
+    [
+     "bạn,",
+     -1287
+    ],
+    [
+     "xe",
+     -724
+    ],
+    [
+     "đầu",
+     -524
+    ],
+    [
+     "tiên",
+     -312
+    ],
+    [
+     "cách",
+     -87
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "xế",
+     -1520
+    ],
+    [
+     "gần",
+     -1275
+    ],
+    [
+     "bạn,",
+     -947
+    ],
+    [
+     "xe",
+     -537
+    ],
+    [
+     "đầu",
+     -291
+    ]
+   ],
+   "clip": {
+    "start_s": 1.725,
+    "vad_s": 2.749,
+    "end_s": 5.115,
+    "dur_s": 3.389,
+    "ai_dur_s": 6.636,
+    "speech_end_ms": 1565,
+    "user_onset_s": 2.323,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "barge_p_g07_uq_H2_r1",
+   "error": null,
+   "setup_ms": 348,
+   "transcript": "Huỷ chuyến này đi.",
+   "finals": [
+    {
+     "t_ms": 2008,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 592,
+     "text": "Xe"
+    },
+    {
+     "t_ms": 736,
+     "text": "Xe đầu tiên."
+    },
+    {
+     "t_ms": 890,
+     "text": "Huỷ chuyến này"
+    },
+    {
+     "t_ms": 1382,
+     "text": "Huỷ chuyến này đi."
+    },
+    {
+     "t_ms": 1877,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "generation_complete_ms": [
+    2009
+   ],
+   "activity": [
+    {
+     "t_ms": 290,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2009,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2405,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "after_g035_H2",
+   "condition": "after_g035",
+   "sentence": "H2",
+   "label": "user_after_ai",
+   "tts_active": true,
+   "gain": 0.35,
+   "user_gain": 1.0,
+   "ai_text": "Hiện có ba tài xế gần bạn, xe đầu tiên cách khoảng bốn trăm mét. Bạn chọn xe nào?",
+   "user_text": "Xe đầu tiên",
+   "expected_user": "Xe đầu tiên",
+   "echo_text": "chọn xe nào?",
+   "echo_text_interp": "mét. Bạn chọn xe nào?",
+   "echo_words_t": [
+    [
+     "chọn",
+     -1639
+    ],
+    [
+     "xe",
+     -1364
+    ],
+    [
+     "nào?",
+     -1114
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "mét.",
+     -1586
+    ],
+    [
+     "Bạn",
+     -1176
+    ],
+    [
+     "chọn",
+     -849
+    ],
+    [
+     "xe",
+     -439
+    ],
+    [
+     "nào?",
+     -193
+    ]
+   ],
+   "clip": {
+    "start_s": 5.478,
+    "vad_s": 6.502,
+    "end_s": 8.795,
+    "dur_s": 3.317,
+    "ai_dur_s": 6.636,
+    "speech_end_ms": 1493,
+    "user_onset_s": 6.075,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "after_g035_H2_r1",
+   "error": null,
+   "setup_ms": 304,
+   "transcript": "Xe đầu tiên.",
+   "finals": [
+    {
+     "t_ms": 1942,
+     "text": "Xe đầu tiên."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 598,
+     "text": "nào"
+    },
+    {
+     "t_ms": 836,
+     "text": "nào?"
+    },
+    {
+     "t_ms": 1148,
+     "text": "Xe"
+    },
+    {
+     "t_ms": 1434,
+     "text": "Xe đầu tiên."
+    },
+    {
+     "t_ms": 1717,
+     "text": "Xe đầu tiên."
+    }
+   ],
+   "generation_complete_ms": [
+    1942
+   ],
+   "activity": [
+    {
+     "t_ms": 164,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1942,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2312,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "echo_p_g03_H3",
+   "condition": "echo_p_g03",
+   "sentence": "H3",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.3,
+   "user_gain": 0.0,
+   "ai_text": "Bạn đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "Tân Sơn Nhất, cảm ơn bạn đã",
+   "echo_text_interp": "bay Tân Sơn Nhất, cảm",
+   "echo_words_t": [
+    [
+     "Tân",
+     -1703
+    ],
+    [
+     "Sơn",
+     -1503
+    ],
+    [
+     "Nhất,",
+     -1266
+    ],
+    [
+     "cảm",
+     -841
+    ],
+    [
+     "ơn",
+     -628
+    ],
+    [
+     "bạn",
+     -441
+    ],
+    [
+     "đã",
+     -178
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "bay",
+     -1644
+    ],
+    [
+     "Tân",
+     -1319
+    ],
+    [
+     "Sơn",
+     -993
+    ],
+    [
+     "Nhất,",
+     -668
+    ],
+    [
+     "cảm",
+     -179
+    ]
+   ],
+   "clip": {
+    "start_s": 1.842,
+    "vad_s": 2.866,
+    "end_s": 3.816,
+    "dur_s": 1.974,
+    "ai_dur_s": 7.164,
+    "speech_end_ms": 0,
+    "user_onset_s": null,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_p_g03_H3_r1",
+   "error": null,
+   "setup_ms": 375,
+   "transcript": "Cảm ơn bạn đã",
+   "finals": [
+    {
+     "t_ms": 1286,
+     "text": "Cảm ơn bạn đã"
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 678,
+     "text": "Cảm ơn bạn."
+    },
+    {
+     "t_ms": 724,
+     "text": "Cảm ơn bạn đã"
+    }
+   ],
+   "generation_complete_ms": [
+    1286
+   ],
+   "activity": [
+    {
+     "t_ms": 275,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1286,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 1011,
+    "first_final_after_end_ms": 275,
+    "last_final_after_end_ms": 275,
+    "gen_complete_after_end_ms": 275,
+    "app_done_after_end_ms": 275,
+    "app_done_reason": "generationComplete",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "echo_p_g07_H3",
+   "condition": "echo_p_g07",
+   "sentence": "H3",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.7,
+   "user_gain": 0.0,
+   "ai_text": "Bạn đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "đã đi xe.",
+   "echo_text_interp": "cảm ơn bạn đã đi xe.",
+   "echo_words_t": [
+    [
+     "đã",
+     -1611
+    ],
+    [
+     "đi",
+     -1423
+    ],
+    [
+     "xe.",
+     -1248
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "cảm",
+     -1612
+    ],
+    [
+     "ơn",
+     -1286
+    ],
+    [
+     "bạn",
+     -1042
+    ],
+    [
+     "đã",
+     -716
+    ],
+    [
+     "đi",
+     -472
+    ],
+    [
+     "xe.",
+     -228
+    ]
+   ],
+   "clip": {
+    "start_s": 3.274,
+    "vad_s": 4.298,
+    "end_s": 5.248,
+    "dur_s": 1.974,
+    "ai_dur_s": 7.164,
+    "speech_end_ms": 0,
+    "user_onset_s": null,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_p_g07_H3_r1",
+   "error": null,
+   "setup_ms": 233,
+   "transcript": "",
+   "finals": [],
+   "interims": [],
+   "generation_complete_ms": [],
+   "activity": [],
+   "timing": {
+    "stream_end_ms": 1012,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 350,
+    "app_done_reason": "timeout",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "echo_full_g05_H3",
+   "condition": "echo_full_g05",
+   "sentence": "H3",
+   "label": "echo_only",
+   "tts_active": true,
+   "gain": 0.5,
+   "user_gain": 0.0,
+   "ai_text": "Bạn đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "user_text": "",
+   "expected_user": "",
+   "echo_text": "đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "echo_text_interp": "đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "echo_words_t": [
+    [
+     "đã",
+     -1799
+    ],
+    [
+     "tới",
+     -1637
+    ],
+    [
+     "sân",
+     -1399
+    ],
+    [
+     "bay",
+     -1137
+    ],
+    [
+     "Tân",
+     -987
+    ],
+    [
+     "Sơn",
+     -787
+    ],
+    [
+     "Nhất,",
+     -549
+    ],
+    [
+     "cảm",
+     -124
+    ],
+    [
+     "ơn",
+     88
+    ],
+    [
+     "bạn",
+     276
+    ],
+    [
+     "đã",
+     538
+    ],
+    [
+     "đi",
+     726
+    ],
+    [
+     "xe.",
+     901
+    ],
+    [
+     "Bạn",
+     2151
+    ],
+    [
+     "có",
+     2401
+    ],
+    [
+     "muốn",
+     2588
+    ],
+    [
+     "đánh",
+     2851
+    ],
+    [
+     "giá",
+     3063
+    ],
+    [
+     "tài",
+     3313
+    ],
+    [
+     "xế",
+     3526
+    ],
+    [
+     "không?",
+     3826
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "đã",
+     -1824
+    ],
+    [
+     "tới",
+     -1579
+    ],
+    [
+     "sân",
+     -1254
+    ],
+    [
+     "bay",
+     -928
+    ],
+    [
+     "Tân",
+     -602
+    ],
+    [
+     "Sơn",
+     -277
+    ],
+    [
+     "Nhất,",
+     49
+    ],
+    [
+     "cảm",
+     537
+    ],
+    [
+     "ơn",
+     863
+    ],
+    [
+     "bạn",
+     1107
+    ],
+    [
+     "đã",
+     1433
+    ],
+    [
+     "đi",
+     1677
+    ],
+    [
+     "xe.",
+     1921
+    ],
+    [
+     "Bạn",
+     2247
+    ],
+    [
+     "có",
+     2573
+    ],
+    [
+     "muốn",
+     2817
+    ],
+    [
+     "đánh",
+     3224
+    ],
+    [
+     "giá",
+     3631
+    ],
+    [
+     "tài",
+     3956
+    ],
+    [
+     "xế",
+     4282
+    ],
+    [
+     "không?",
+     4526
+    ]
+   ],
+   "clip": {
+    "start_s": 1.125,
+    "vad_s": 2.149,
+    "end_s": 8.114,
+    "dur_s": 6.989,
+    "ai_dur_s": 7.164,
+    "speech_end_ms": 5015,
+    "user_onset_s": null,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "echo_full_g05_H3_r1",
+   "error": null,
+   "setup_ms": 356,
+   "transcript": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "finals": [
+    {
+     "t_ms": 5628,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?"
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 499,
+     "text": "Tây Tân."
+    },
+    {
+     "t_ms": 676,
+     "text": "Tây Sơn Nhất."
+    },
+    {
+     "t_ms": 835,
+     "text": "Tây Sơn Nhất, cảm ơn."
+    },
+    {
+     "t_ms": 1142,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã"
+    },
+    {
+     "t_ms": 1633,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe."
+    },
+    {
+     "t_ms": 2058,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe."
+    },
+    {
+     "t_ms": 2555,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe."
+    },
+    {
+     "t_ms": 3090,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có"
+    },
+    {
+     "t_ms": 3602,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh"
+    },
+    {
+     "t_ms": 3985,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài"
+    },
+    {
+     "t_ms": 4490,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?"
+    },
+    {
+     "t_ms": 4956,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?"
+    },
+    {
+     "t_ms": 5442,
+     "text": "Tây Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?"
+    }
+   ],
+   "generation_complete_ms": [
+    5636
+   ],
+   "activity": [
+    {
+     "t_ms": 234,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 5636,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 6011,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "barge_p_g03_H3",
+   "condition": "barge_p_g03",
+   "sentence": "H3",
+   "label": "user_barge",
+   "tts_active": true,
+   "gain": 0.3,
+   "user_gain": 1.0,
+   "ai_text": "Bạn đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "user_text": "Không cần đâu",
+   "expected_user": "Không cần đâu",
+   "echo_text": "cảm ơn bạn đã đi xe.",
+   "echo_text_interp": "Sơn Nhất, cảm ơn bạn đã",
+   "echo_words_t": [
+    [
+     "cảm",
+     -1625
+    ],
+    [
+     "ơn",
+     -1413
+    ],
+    [
+     "bạn",
+     -1225
+    ],
+    [
+     "đã",
+     -963
+    ],
+    [
+     "đi",
+     -775
+    ],
+    [
+     "xe.",
+     -600
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Sơn",
+     -1778
+    ],
+    [
+     "Nhất,",
+     -1452
+    ],
+    [
+     "cảm",
+     -964
+    ],
+    [
+     "ơn",
+     -638
+    ],
+    [
+     "bạn",
+     -394
+    ],
+    [
+     "đã",
+     -68
+    ]
+   ],
+   "clip": {
+    "start_s": 2.626,
+    "vad_s": 3.65,
+    "end_s": 5.896,
+    "dur_s": 3.269,
+    "ai_dur_s": 7.164,
+    "speech_end_ms": 1445,
+    "user_onset_s": 3.224,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "barge_p_g03_H3_r1",
+   "error": null,
+   "setup_ms": 467,
+   "transcript": "Không cần đâu.",
+   "finals": [
+    {
+     "t_ms": 1979,
+     "text": "Không cần đâu."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 674,
+     "text": "Bạn đã"
+    },
+    {
+     "t_ms": 809,
+     "text": "Bạn đã đi xe."
+    },
+    {
+     "t_ms": 930,
+     "text": "Bạn đã đi xe."
+    },
+    {
+     "t_ms": 1261,
+     "text": "Bạn đã đi xe. Không cần đâu."
+    },
+    {
+     "t_ms": 1571,
+     "text": "Không cần đâu."
+    }
+   ],
+   "generation_complete_ms": [
+    1979
+   ],
+   "activity": [
+    {
+     "t_ms": 412,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1979,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2311,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "barge_p_g07_uq_H3",
+   "condition": "barge_p_g07_uq",
+   "sentence": "H3",
+   "label": "user_barge",
+   "tts_active": true,
+   "gain": 0.7,
+   "user_gain": 0.6,
+   "ai_text": "Bạn đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "user_text": "Không cần đâu",
+   "expected_user": "Không cần đâu",
+   "echo_text": "Tân Sơn Nhất, cảm ơn bạn đã đi",
+   "echo_text_interp": "bay Tân Sơn Nhất, cảm",
+   "echo_words_t": [
+    [
+     "Tân",
+     -1772
+    ],
+    [
+     "Sơn",
+     -1572
+    ],
+    [
+     "Nhất,",
+     -1334
+    ],
+    [
+     "cảm",
+     -909
+    ],
+    [
+     "ơn",
+     -697
+    ],
+    [
+     "bạn",
+     -509
+    ],
+    [
+     "đã",
+     -247
+    ],
+    [
+     "đi",
+     -59
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "bay",
+     -1713
+    ],
+    [
+     "Tân",
+     -1387
+    ],
+    [
+     "Sơn",
+     -1062
+    ],
+    [
+     "Nhất,",
+     -736
+    ],
+    [
+     "cảm",
+     -248
+    ]
+   ],
+   "clip": {
+    "start_s": 1.91,
+    "vad_s": 2.934,
+    "end_s": 5.179,
+    "dur_s": 3.269,
+    "ai_dur_s": 7.164,
+    "speech_end_ms": 1445,
+    "user_onset_s": 2.507,
+    "paused": true
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "barge_p_g07_uq_H3_r1",
+   "error": null,
+   "setup_ms": 398,
+   "transcript": "Cảm ơn bạn đã giúp. Không cần đâu.",
+   "finals": [
+    {
+     "t_ms": 1838,
+     "text": "Cảm ơn bạn đã giúp. Không cần đâu."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 932,
+     "text": "Cảm ơn bạn."
+    },
+    {
+     "t_ms": 953,
+     "text": "Cảm ơn bạn đã"
+    },
+    {
+     "t_ms": 1332,
+     "text": "Cảm ơn bạn đã"
+    },
+    {
+     "t_ms": 1716,
+     "text": "Cảm ơn bạn đã Không cần đâu."
+    }
+   ],
+   "generation_complete_ms": [
+    1838
+   ],
+   "activity": [
+    {
+     "t_ms": 355,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1838,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2309,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "after_g035_H3",
+   "condition": "after_g035",
+   "sentence": "H3",
+   "label": "user_after_ai",
+   "tts_active": true,
+   "gain": 0.35,
+   "user_gain": 1.0,
+   "ai_text": "Bạn đã tới sân bay Tân Sơn Nhất, cảm ơn bạn đã đi xe. Bạn có muốn đánh giá tài xế không?",
+   "user_text": "Có, năm sao nhé",
+   "expected_user": "Có, năm sao nhé",
+   "echo_text": "tài xế không?",
+   "echo_text_interp": "đánh giá tài xế không?",
+   "echo_words_t": [
+    [
+     "tài",
+     -1577
+    ],
+    [
+     "xế",
+     -1364
+    ],
+    [
+     "không?",
+     -1064
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "đánh",
+     -1666
+    ],
+    [
+     "giá",
+     -1259
+    ],
+    [
+     "tài",
+     -933
+    ],
+    [
+     "xế",
+     -608
+    ],
+    [
+     "không?",
+     -364
+    ]
+   ],
+   "clip": {
+    "start_s": 6.015,
+    "vad_s": 7.039,
+    "end_s": 9.836,
+    "dur_s": 3.821,
+    "ai_dur_s": 7.164,
+    "speech_end_ms": 1997,
+    "user_onset_s": 6.612,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "after_g035_H3_r1",
+   "error": null,
+   "setup_ms": 295,
+   "transcript": "Có, nằm sau nhé.",
+   "finals": [
+    {
+     "t_ms": 2747,
+     "text": "Có, nằm sau nhé."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 605,
+     "text": "Có."
+    },
+    {
+     "t_ms": 1042,
+     "text": "Có."
+    },
+    {
+     "t_ms": 1387,
+     "text": "Có, năm sao nhé."
+    },
+    {
+     "t_ms": 2256,
+     "text": "Có, năm sao nhé."
+    },
+    {
+     "t_ms": 2746,
+     "text": "Có, năm sao nhé."
+    }
+   ],
+   "generation_complete_ms": [
+    2747
+   ],
+   "activity": [
+    {
+     "t_ms": 424,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2747,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2815,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  }
+ ]
+}

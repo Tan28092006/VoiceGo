@@ -26,12 +26,13 @@ except ImportError:
 
 try:
     from pymongo import MongoClient, ASCENDING, DESCENDING
-    from pymongo.errors import ServerSelectionTimeoutError
+    from pymongo.errors import ConfigurationError, ServerSelectionTimeoutError
 except ImportError:  # pragma: no cover - exercised only when deps are missing.
     MongoClient = None
     ASCENDING = 1
     DESCENDING = -1
     ServerSelectionTimeoutError = Exception
+    ConfigurationError = Exception
 
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
@@ -130,11 +131,14 @@ def _client_or_raise():
         raise MongoUnavailable("pymongo is not installed")
     if not MONGODB_URI:
         raise MongoUnavailable("MONGODB_URI is empty")
-    if _client is None:
-        _client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=1200)
     try:
+        # mongodb+srv:// phân giải SRV NGAY khi tạo client: DNS hỏng (Atlas đổi host,
+        # mạng chặn) ném ConfigurationError ở đây chứ không phải lúc ping -> trước
+        # đây lọt ra ngoài thành 500 thay vì "Mongo không dùng được".
+        if _client is None:
+            _client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=1200)
         _client.admin.command("ping")
-    except ServerSelectionTimeoutError as exc:
+    except (ServerSelectionTimeoutError, ConfigurationError) as exc:
         raise MongoUnavailable(str(exc)) from exc
     return _client
 

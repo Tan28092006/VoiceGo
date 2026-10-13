@@ -1,5 +1,13 @@
 # 🚀 Deploy VoiceGo (FREE) — Vercel (frontend) + Render (backend) + MongoDB Atlas
 
+> ⚠️ **LỖI THỜI — không còn là quy trình deploy (ghi chú 2026-10-11).** Production hiện là
+> **MỘT** web service Docker trên **Render free** tại https://voicego-9k11.onrender.com: FastAPI
+> phục vụ API + `frontend/dist` + Socket.IO cùng container, dựng từ Blueprint `render.yaml`
+> ở gốc repo (`healthCheckPath /api/health`, push lên `main` là tự deploy). Không còn Vercel,
+> không còn `voicego-api.onrender.com`, và **đừng** cắm keep-alive ping 5' (ăn quota 750h của
+> cả workspace — xem DEPLOY_DOMAIN.md phần E). Quy trình hiện tại: `AGENTS.md` mục 4 và
+> `RECOVERY.md`. Phần dưới giữ lại làm lịch sử.
+
 Kiến trúc cho CV: frontend load tức thì qua **CDN Vercel**, backend FastAPI (kèm
 Socket.IO realtime) trên **Render free**, dữ liệu trên **MongoDB Atlas free**.
 

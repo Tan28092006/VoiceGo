@@ -25,6 +25,8 @@ React đã build — mọi thứ cùng một origin. Xem thêm `ARCHITECTURE.md`
 | `MONGODB_URI` | ✅ | Chuỗi kết nối MongoDB Atlas |
 | `DEEPSEEK_API_KEY` | ✅ | LLM cho agent hội thoại + geocode |
 | `GROQ_WHISPER_KEY` | ✅ | STT Whisper (DeepSeek không nhận giọng nói) |
-| `FPT_API_KEY` | ⬜ | STT/TTS tiếng Việt (hết quota vẫn chạy nhờ edge-tts) |
-| `TTS_PRIMARY` | ⬜ | Đặt `edge` để dùng thẳng edge-tts (miễn phí) làm giọng chính |
-| `GEMINI_API_KEY` | ⬜ | Tuỳ chọn, để trống cũng được |
+| `GEMINI_API_KEY` | ⬜ (nên có) | STT mặc định Gemini Live + geocode grounding; thiếu thì STT lùi về Whisper |
+| `STT_ENGINE` / `TTS_ENGINE` | ⬜ | Mặc định `gemini-live` / `browser`; đặt `whisper` / `edge` để đổi |
+
+> Production hiện chạy trên Render free (https://voicego-9k11.onrender.com), không phải HF Space.
+> `FPT_API_KEY`, `TTS_PRIMARY` không còn được code đọc. Danh sách đủ kèm default: `AGENTS.md` mục 3.

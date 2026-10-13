@@ -1,0 +1,1199 @@
+{
+ "meta": {
+  "run_id": "20261013T093142-T",
+  "split": "latency",
+  "sentence_set": "T",
+  "generated_at": "2026-10-13T09:31:42",
+  "model": "gemini-3.5-transcribe-live",
+  "endpoint": "v1beta BidiGenerateContent (?key=)",
+  "custom_vocabulary": true,
+  "ai_voice": "vi-VN-HoaiMyNeural",
+  "user_voice": "vi-VN-NamMinhNeural",
+  "echo_filter": "highpass=f=300,lowpass=f=3400,aecho=0.8:0.6:25|60:0.25|0.15",
+  "preroll_s": 1.024,
+  "vad_tts_s": 0.42666666666666664,
+  "vad_s": 0.6826666666666666,
+  "sessions": 12,
+  "repeat": 1,
+  "repeat_subset": [
+   "echo_p_g07_A1",
+   "echo_p_g03_A2",
+   "barge_p_g03_A2",
+   "after_g035_A1"
+  ],
+  "src_hashes": {
+   "voicego/frontend/src/services/liveStt.js": "1ef2ca0120f2d6da90ce3c58e37555c9ff296bbf",
+   "voicego/frontend/src/services/voiceRecorder.js": "21c39bf6e2ba8a0d3bcee07c928780ef72270e0f",
+   "voicego/frontend/src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+   "voicego/frontend/src/hooks/useVoiceApp.js": "d7d891230818f5638747005bed2dfae7cd7f463b",
+   "voicego/eval/live/live_echo_eval.py": "fe0d072134bcaf63815b2b632d736026c869aabc",
+   "voicego/eval/live/_audio.py": "4d8b567c65ee441642dbb0b9fe0856abb3247071",
+   "head": "f3c11fe"
+  },
+  "note": "t_ms trong finals/interims tính từ t_vad (lúc xả tiền ghi). source=live: transcript Gemini thật trên giọng TTS tổng hợp.",
+  "attempted": 12,
+  "errored": 0
+ },
+ "cases": [
+  {
+   "id": "tail055_T1",
+   "condition": "tail055",
+   "sentence": "T1",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Cho mình đặt xe máy đi chợ Bến Thành nhé",
+   "expected_user": "Cho mình đặt xe máy đi chợ Bến Thành nhé",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.55,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 3.994,
+    "dur_s": 3.994,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 2461,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail055_T1_r1",
+   "error": null,
+   "setup_ms": 426,
+   "transcript": "Cho mình đặt xe máy đi Chợ Bến Thành nhé.",
+   "finals": [
+    {
+     "t_ms": 2912,
+     "text": "Cho mình đặt xe máy đi Chợ Bến Thành nhé."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 814,
+     "text": "Cho"
+    },
+    {
+     "t_ms": 957,
+     "text": "Cho mình đặt xe"
+    },
+    {
+     "t_ms": 1201,
+     "text": "Cho mình đặt xe máy đi"
+    },
+    {
+     "t_ms": 1604,
+     "text": "Cho mình đặt xe máy đi Chợ"
+    },
+    {
+     "t_ms": 2099,
+     "text": "Cho mình đặt xe máy đi Chợ Bến Thành nhé."
+    },
+    {
+     "t_ms": 2648,
+     "text": "Cho mình đặt xe máy đi Chợ Bến Thành nhé."
+    }
+   ],
+   "generation_complete_ms": [
+    2912
+   ],
+   "activity": [
+    {
+     "t_ms": 578,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2912,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 3104,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail080_T1",
+   "condition": "tail080",
+   "sentence": "T1",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Cho mình đặt xe máy đi chợ Bến Thành nhé",
+   "expected_user": "Cho mình đặt xe máy đi chợ Bến Thành nhé",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.8,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 4.244,
+    "dur_s": 4.244,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 2461,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail080_T1_r1",
+   "error": null,
+   "setup_ms": 270,
+   "transcript": "Cho mình đặt xe máy đi Chợ Bến Thành nhé.",
+   "finals": [
+    {
+     "t_ms": 2932,
+     "text": "Cho mình đặt xe máy đi Chợ Bến Thành nhé."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 512,
+     "text": "Cho"
+    },
+    {
+     "t_ms": 673,
+     "text": "Cho mình đặt xe"
+    },
+    {
+     "t_ms": 1101,
+     "text": "Cho mình đặt xe máy đi"
+    },
+    {
+     "t_ms": 1575,
+     "text": "Cho mình đặt xe máy đi chợ Bến"
+    },
+    {
+     "t_ms": 2103,
+     "text": "Cho mình đặt xe máy đi chợ Bến Thành nhé."
+    },
+    {
+     "t_ms": 2543,
+     "text": "Cho mình đặt xe máy đi chợ Bến Thành nhé."
+    }
+   ],
+   "generation_complete_ms": [
+    2932
+   ],
+   "activity": [
+    {
+     "t_ms": 316,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2932,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 3317,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail055_T2",
+   "condition": "tail055",
+   "sentence": "T2",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Không, mình muốn đi Landmark 81",
+   "expected_user": "Không, mình muốn đi Landmark 81",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.55,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 4.018,
+    "dur_s": 4.018,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 2485,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail055_T2_r1",
+   "error": null,
+   "setup_ms": 293,
+   "transcript": "Không, mình muốn đi Landmark 81.",
+   "finals": [
+    {
+     "t_ms": 3021,
+     "text": "Không, mình muốn đi Landmark 81."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 493,
+     "text": "Không."
+    },
+    {
+     "t_ms": 783,
+     "text": "Không, mình"
+    },
+    {
+     "t_ms": 1113,
+     "text": "Không, mình muốn đi"
+    },
+    {
+     "t_ms": 1579,
+     "text": "Không, mình muốn đi Landmark 81."
+    },
+    {
+     "t_ms": 2035,
+     "text": "Không, mình muốn đi Landmark 81."
+    },
+    {
+     "t_ms": 2469,
+     "text": "Không, mình muốn đi Landmark 81."
+    }
+   ],
+   "generation_complete_ms": [
+    3021
+   ],
+   "activity": [
+    {
+     "t_ms": 291,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 3026,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 3109,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail080_T2",
+   "condition": "tail080",
+   "sentence": "T2",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Không, mình muốn đi Landmark 81",
+   "expected_user": "Không, mình muốn đi Landmark 81",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.8,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 4.268,
+    "dur_s": 4.268,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 2485,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail080_T2_r1",
+   "error": null,
+   "setup_ms": 760,
+   "transcript": "Không, mình muốn đi Landmark 81.",
+   "finals": [
+    {
+     "t_ms": 3108,
+     "text": "Không, mình muốn đi Landmark 81."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 606,
+     "text": "Không."
+    },
+    {
+     "t_ms": 707,
+     "text": "Không, mình"
+    },
+    {
+     "t_ms": 1060,
+     "text": "Không, mình muốn đi"
+    },
+    {
+     "t_ms": 1919,
+     "text": "Không, mình muốn đi Landmark 81."
+    },
+    {
+     "t_ms": 2414,
+     "text": "Không, mình muốn đi Landmark 81."
+    },
+    {
+     "t_ms": 2754,
+     "text": "Không, mình muốn đi Landmark 81."
+    }
+   ],
+   "generation_complete_ms": [
+    3108
+   ],
+   "activity": [
+    {
+     "t_ms": 606,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 3108,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 3308,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail055_T3",
+   "condition": "tail055",
+   "sentence": "T3",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Đi xe máy",
+   "expected_user": "Đi xe máy",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.55,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 2.722,
+    "dur_s": 2.722,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 1189,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail055_T3_r1",
+   "error": null,
+   "setup_ms": 294,
+   "transcript": "Đi xe máy.",
+   "finals": [
+    {
+     "t_ms": 1721,
+     "text": "Đi xe máy."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 589,
+     "text": "Đi"
+    },
+    {
+     "t_ms": 787,
+     "text": "Đi xe máy."
+    },
+    {
+     "t_ms": 1445,
+     "text": "Đi xe máy."
+    },
+    {
+     "t_ms": 1573,
+     "text": "Đi xe máy."
+    }
+   ],
+   "generation_complete_ms": [
+    1721
+   ],
+   "activity": [
+    {
+     "t_ms": 371,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1721,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 1810,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail080_T3",
+   "condition": "tail080",
+   "sentence": "T3",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Đi xe máy",
+   "expected_user": "Đi xe máy",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.8,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 2.972,
+    "dur_s": 2.972,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 1189,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail080_T3_r1",
+   "error": null,
+   "setup_ms": 306,
+   "transcript": "Đi xe máy.",
+   "finals": [
+    {
+     "t_ms": 1646,
+     "text": "Đi xe máy."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 663,
+     "text": "Đi xe máy."
+    },
+    {
+     "t_ms": 1052,
+     "text": "Đi xe máy."
+    },
+    {
+     "t_ms": 1517,
+     "text": "Đi xe máy."
+    }
+   ],
+   "generation_complete_ms": [
+    1646
+   ],
+   "activity": [
+    {
+     "t_ms": 336,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 1646,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2014,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail055_T4",
+   "condition": "tail055",
+   "sentence": "T4",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Huỷ chuyến này đi",
+   "expected_user": "Huỷ chuyến này đi",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.55,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 2.842,
+    "dur_s": 2.842,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 1309,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail055_T4_r1",
+   "error": null,
+   "setup_ms": 276,
+   "transcript": "Huỷ chuyến này đi.",
+   "finals": [
+    {
+     "t_ms": 2072,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 538,
+     "text": "Huỷ."
+    },
+    {
+     "t_ms": 674,
+     "text": "Huỷ chuyến này."
+    },
+    {
+     "t_ms": 1056,
+     "text": "Huỷ chuyến này đi."
+    },
+    {
+     "t_ms": 1554,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "generation_complete_ms": [
+    2072
+   ],
+   "activity": [
+    {
+     "t_ms": 304,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2073,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 1903,
+    "first_final_after_end_ms": 169,
+    "last_final_after_end_ms": 169,
+    "gen_complete_after_end_ms": 169,
+    "app_done_after_end_ms": 169,
+    "app_done_reason": "generationComplete",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "tail080_T4",
+   "condition": "tail080",
+   "sentence": "T4",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Huỷ chuyến này đi",
+   "expected_user": "Huỷ chuyến này đi",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.8,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 3.092,
+    "dur_s": 3.092,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 1309,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail080_T4_r1",
+   "error": null,
+   "setup_ms": 320,
+   "transcript": "Huỷ chuyến này đi.",
+   "finals": [
+    {
+     "t_ms": 2026,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 654,
+     "text": "Huỷ."
+    },
+    {
+     "t_ms": 928,
+     "text": "Huỷ chuyến này."
+    },
+    {
+     "t_ms": 1226,
+     "text": "Huỷ chuyến này đi."
+    },
+    {
+     "t_ms": 2012,
+     "text": "Huỷ chuyến này đi."
+    }
+   ],
+   "generation_complete_ms": [
+    2026
+   ],
+   "activity": [
+    {
+     "t_ms": 290,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2026,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2216,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail055_T5",
+   "condition": "tail055",
+   "sentence": "T5",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Có, đặt xe tới đó đi",
+   "expected_user": "Có, đặt xe tới đó đi",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.55,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 3.562,
+    "dur_s": 3.562,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 2029,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail055_T5_r1",
+   "error": null,
+   "setup_ms": 261,
+   "transcript": "Có, đặt xe tới đó đi.",
+   "finals": [
+    {
+     "t_ms": 2522,
+     "text": "Có, đặt xe tới đó đi."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 500,
+     "text": "Có."
+    },
+    {
+     "t_ms": 674,
+     "text": "Có."
+    },
+    {
+     "t_ms": 1106,
+     "text": "Có, đặt xe tới"
+    },
+    {
+     "t_ms": 1680,
+     "text": "Có, đặt xe tới đó đi."
+    },
+    {
+     "t_ms": 2000,
+     "text": "Có, đặt xe tới đó đi."
+    },
+    {
+     "t_ms": 2431,
+     "text": "Có, đặt xe tới đó đi."
+    }
+   ],
+   "generation_complete_ms": [
+    2522
+   ],
+   "activity": [
+    {
+     "t_ms": 286,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2522,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2610,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail080_T5",
+   "condition": "tail080",
+   "sentence": "T5",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Có, đặt xe tới đó đi",
+   "expected_user": "Có, đặt xe tới đó đi",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.8,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 3.812,
+    "dur_s": 3.812,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 2029,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail080_T5_r1",
+   "error": null,
+   "setup_ms": 540,
+   "transcript": "Có, đặt xe tới đó đi.",
+   "finals": [
+    {
+     "t_ms": 2660,
+     "text": "Có, đặt xe tới đó đi."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 571,
+     "text": "Có."
+    },
+    {
+     "t_ms": 650,
+     "text": "Có."
+    },
+    {
+     "t_ms": 1095,
+     "text": "Có, đặt xe tới"
+    },
+    {
+     "t_ms": 1475,
+     "text": "Có, đặt xe tới đó đi."
+    },
+    {
+     "t_ms": 2170,
+     "text": "Có, đặt xe tới đó đi."
+    },
+    {
+     "t_ms": 2628,
+     "text": "Có, đặt xe tới đó đi."
+    }
+   ],
+   "generation_complete_ms": [
+    2660
+   ],
+   "activity": [
+    {
+     "t_ms": 300,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 2660,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 2902,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  },
+  {
+   "id": "tail055_T6",
+   "condition": "tail055",
+   "sentence": "T6",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất",
+   "expected_user": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.55,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 5.866,
+    "dur_s": 5.866,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 4333,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail055_T6_r1",
+   "error": null,
+   "setup_ms": 222,
+   "transcript": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất.",
+   "finals": [
+    {
+     "t_ms": 4946,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 544,
+     "text": "Mình"
+    },
+    {
+     "t_ms": 699,
+     "text": "Mình muốn đi tới"
+    },
+    {
+     "t_ms": 1160,
+     "text": "Mình muốn đi tới bệnh viện"
+    },
+    {
+     "t_ms": 1841,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy."
+    },
+    {
+     "t_ms": 2060,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy."
+    },
+    {
+     "t_ms": 2544,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không,"
+    },
+    {
+     "t_ms": 3035,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không,"
+    },
+    {
+     "t_ms": 3592,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không, sân bay Tân Sơn Nhất."
+    },
+    {
+     "t_ms": 4025,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không, sân bay Tân Sơn Nhất."
+    },
+    {
+     "t_ms": 4447,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không, sân bay Tân Sơn Nhất."
+    }
+   ],
+   "generation_complete_ms": [
+    4946
+   ],
+   "activity": [
+    {
+     "t_ms": 299,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 4946,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 4914,
+    "first_final_after_end_ms": 32,
+    "last_final_after_end_ms": 32,
+    "gen_complete_after_end_ms": 32,
+    "app_done_after_end_ms": 31,
+    "app_done_reason": "generationComplete",
+    "finals_before_end": 0
+   }
+  },
+  {
+   "id": "tail080_T6",
+   "condition": "tail080",
+   "sentence": "T6",
+   "label": "user_only",
+   "tts_active": false,
+   "gain": 0.0,
+   "user_gain": 1.0,
+   "ai_text": "Dạ.",
+   "user_text": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất",
+   "expected_user": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất",
+   "echo_text": "Dạ.",
+   "echo_text_interp": "Dạ.",
+   "echo_words_t": [
+    [
+     "Dạ.",
+     -858
+    ]
+   ],
+   "echo_words_t_interp": [
+    [
+     "Dạ.",
+     -983
+    ]
+   ],
+   "tail_s": 0.8,
+   "clip": {
+    "start_s": 0.0,
+    "vad_s": 0.983,
+    "end_s": 6.116,
+    "dur_s": 6.116,
+    "ai_dur_s": 1.932,
+    "speech_end_ms": 4333,
+    "user_onset_s": 0.3,
+    "paused": false
+   },
+   "source": "live",
+   "run": 1,
+   "case_id": "tail080_T6_r1",
+   "error": null,
+   "setup_ms": 345,
+   "transcript": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất.",
+   "finals": [
+    {
+     "t_ms": 4941,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất."
+    }
+   ],
+   "interims": [
+    {
+     "t_ms": 547,
+     "text": "Mình"
+    },
+    {
+     "t_ms": 661,
+     "text": "Mình muốn đi tới"
+    },
+    {
+     "t_ms": 1162,
+     "text": "Mình muốn đi tới bệnh viện"
+    },
+    {
+     "t_ms": 1669,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy."
+    },
+    {
+     "t_ms": 2054,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy."
+    },
+    {
+     "t_ms": 2602,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không."
+    },
+    {
+     "t_ms": 3071,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không,"
+    },
+    {
+     "t_ms": 3618,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không, sân bay Tân Sơn Nhất."
+    },
+    {
+     "t_ms": 4050,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không, sân bay Tân Sơn Nhất."
+    },
+    {
+     "t_ms": 4480,
+     "text": "Mình muốn đi tới bệnh viện Chợ Rẫy. À không, sân bay Tân Sơn Nhất."
+    }
+   ],
+   "generation_complete_ms": [
+    4941
+   ],
+   "activity": [
+    {
+     "t_ms": 321,
+     "type": "ACTIVITY_START"
+    },
+    {
+     "t_ms": 4941,
+     "type": "ACTIVITY_END"
+    }
+   ],
+   "timing": {
+    "stream_end_ms": 5205,
+    "first_final_after_end_ms": null,
+    "last_final_after_end_ms": null,
+    "gen_complete_after_end_ms": null,
+    "app_done_after_end_ms": 0,
+    "app_done_reason": "already_final",
+    "finals_before_end": 1
+   }
+  }
+ ]
+}

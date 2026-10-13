@@ -1,0 +1,62 @@
+{
+ "eval": "echo_dataset",
+ "at": "2026-10-13T03:21:52.524Z",
+ "src": {
+  "src/services/liveStt.js": "36a331f3ef1bf8ebea7fed540a6b7f5360bd06a2",
+  "src/services/voiceRecorder.js": "72fb385c0303860e1ba21449d9310c4da372d9f7",
+  "src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+  "src/hooks/useVoiceApp.js": "04150593b222668956dc93d4008eef8a123216f3",
+  "head": "f3c11fe"
+ },
+ "real_gemini": {
+  "n": 3,
+  "falseBarge": 0,
+  "nEcho": 1,
+  "missed": 0.5,
+  "nUser": 2,
+  "userWordLoss": 0.3333333333333333,
+  "sttWordRecall": 0.75,
+  "echoResidue": 0,
+  "strictPass": 0.6666666666666666
+ },
+ "synthetic": {
+  "n": 67,
+  "falseBarge": 0.25,
+  "nEcho": 24,
+  "missed": 0.09302325581395349,
+  "nUser": 43,
+  "userWordLoss": 0.17307692307692307,
+  "sttWordRecall": 1,
+  "echoResidue": 0.052083333333333336,
+  "strictPass": 0.7761194029850746
+ },
+ "synthetic_V2": {
+  "n": 67,
+  "falseBarge": 0.08333333333333333,
+  "nEcho": 24,
+  "missed": 0.11627906976744186,
+  "nUser": 43,
+  "userWordLoss": 0.1858974358974359,
+  "sttWordRecall": 1,
+  "echoResidue": 0.027777777777777776,
+  "strictPass": 0.8208955223880597
+ },
+ "fail_ids": [
+  "R03",
+  "E06",
+  "E07",
+  "E10",
+  "E16",
+  "E19",
+  "E20",
+  "B09",
+  "B17",
+  "B22",
+  "A02",
+  "A04",
+  "A05",
+  "A08",
+  "A11",
+  "A14"
+ ]
+}

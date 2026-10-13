@@ -1,0 +1,838 @@
+{
+ "eval": "echo_live",
+ "at": "2026-10-13T03:21:52.895Z",
+ "src": {
+  "src/services/liveStt.js": "36a331f3ef1bf8ebea7fed540a6b7f5360bd06a2",
+  "src/services/voiceRecorder.js": "72fb385c0303860e1ba21449d9310c4da372d9f7",
+  "src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+  "src/hooks/useVoiceApp.js": "04150593b222668956dc93d4008eef8a123216f3",
+  "head": "f3c11fe"
+ },
+ "runs": [
+  {
+   "file": "20261011T141452-A.json",
+   "run_id": "20261011T141452-A",
+   "split": "dev",
+   "attempted": 26,
+   "errored": 0,
+   "src_hashes": {
+    "voicego/frontend/src/services/liveStt.js": "27cdf0c4313a0f92b5663c39912b5c1d17cd63d4",
+    "voicego/frontend/src/services/tts.js": "1954e794d43ef1c6d833eb1ef1653e6dcbc09d28",
+    "voicego/frontend/src/services/voiceRecorder.js": null
+   }
+  },
+  {
+   "file": "20261013T092229-H.json",
+   "run_id": "20261013T092229-H",
+   "split": "holdout",
+   "attempted": 18,
+   "errored": 1,
+   "src_hashes": {
+    "voicego/frontend/src/services/liveStt.js": "1ef2ca0120f2d6da90ce3c58e37555c9ff296bbf",
+    "voicego/frontend/src/services/voiceRecorder.js": "21c39bf6e2ba8a0d3bcee07c928780ef72270e0f",
+    "voicego/frontend/src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+    "voicego/frontend/src/hooks/useVoiceApp.js": "7817aab5a1d1fa9a65b143fd12897553dfdaea83",
+    "voicego/eval/live/live_echo_eval.py": "761550c719edf6f654586c743697e9b982b12d38",
+    "voicego/eval/live/_audio.py": "4d8b567c65ee441642dbb0b9fe0856abb3247071",
+    "head": "f3c11fe"
+   }
+  },
+  {
+   "file": "20261013T093142-T.json",
+   "run_id": "20261013T093142-T",
+   "split": "latency",
+   "attempted": 12,
+   "errored": 0,
+   "src_hashes": {
+    "voicego/frontend/src/services/liveStt.js": "1ef2ca0120f2d6da90ce3c58e37555c9ff296bbf",
+    "voicego/frontend/src/services/voiceRecorder.js": "21c39bf6e2ba8a0d3bcee07c928780ef72270e0f",
+    "voicego/frontend/src/services/tts.js": "85c1136c1e28c7243a3a90be71886610dc3c35da",
+    "voicego/frontend/src/hooks/useVoiceApp.js": "d7d891230818f5638747005bed2dfae7cd7f463b",
+    "voicego/eval/live/live_echo_eval.py": "fe0d072134bcaf63815b2b632d736026c869aabc",
+    "voicego/eval/live/_audio.py": "4d8b567c65ee441642dbb0b9fe0856abb3247071",
+    "head": "f3c11fe"
+   }
+  }
+ ],
+ "dev_stability_cur": [
+  {
+   "id": "echo_p_g07_A1",
+   "k": 3,
+   "any": true,
+   "all": true,
+   "sameText": true,
+   "texts": [
+    ""
+   ]
+  },
+  {
+   "id": "after_g035_A1",
+   "k": 3,
+   "any": true,
+   "all": true,
+   "sameText": true,
+   "texts": [
+    "Đi xe máy."
+   ]
+  },
+  {
+   "id": "echo_p_g03_A2",
+   "k": 3,
+   "any": false,
+   "all": false,
+   "sameText": true,
+   "texts": [
+    "Quận 1, các bạn."
+   ]
+  },
+  {
+   "id": "barge_p_g03_A2",
+   "k": 3,
+   "any": true,
+   "all": true,
+   "sameText": true,
+   "texts": [
+    "Không, mình muốn đi Landmark 81."
+   ]
+  }
+ ],
+ "dev_stability_V1c": [
+  {
+   "id": "echo_p_g07_A1",
+   "k": 3,
+   "any": true,
+   "all": true,
+   "sameText": true,
+   "texts": [
+    ""
+   ]
+  },
+  {
+   "id": "after_g035_A1",
+   "k": 3,
+   "any": true,
+   "all": true,
+   "sameText": true,
+   "texts": [
+    "Đi xe máy."
+   ]
+  },
+  {
+   "id": "echo_p_g03_A2",
+   "k": 3,
+   "any": true,
+   "all": false,
+   "sameText": true,
+   "texts": [
+    "Quận 1, các bạn."
+   ]
+  },
+  {
+   "id": "barge_p_g03_A2",
+   "k": 3,
+   "any": true,
+   "all": true,
+   "sameText": true,
+   "texts": [
+    "Không, mình muốn đi Landmark 81."
+   ]
+  }
+ ],
+ "dev": {
+  "cur": {
+   "n": 18,
+   "falseBarge": 0.7777777777777778,
+   "nEcho": 9,
+   "missed": 0,
+   "nUser": 9,
+   "userWordLoss": 0.07317073170731707,
+   "sttWordRecall": 0.9761904761904762,
+   "echoResidue": 0.039473684210526314,
+   "strictPass": 0.5555555555555556
+  },
+  "V1": {
+   "n": 18,
+   "falseBarge": 0.1111111111111111,
+   "nEcho": 9,
+   "missed": 0.1111111111111111,
+   "nUser": 9,
+   "userWordLoss": 0.12195121951219512,
+   "sttWordRecall": 0.9761904761904762,
+   "echoResidue": 0.039473684210526314,
+   "strictPass": 0.8333333333333334
+  },
+  "V1c": {
+   "n": 18,
+   "falseBarge": 0.1111111111111111,
+   "nEcho": 9,
+   "missed": 0,
+   "nUser": 9,
+   "userWordLoss": 0.07317073170731707,
+   "sttWordRecall": 0.9761904761904762,
+   "echoResidue": 0.039473684210526314,
+   "strictPass": 0.8888888888888888
+  },
+  "V2": {
+   "n": 18,
+   "falseBarge": 0.1111111111111111,
+   "nEcho": 9,
+   "missed": 0.1111111111111111,
+   "nUser": 9,
+   "userWordLoss": 0.12195121951219512,
+   "sttWordRecall": 0.9761904761904762,
+   "echoResidue": 0.039473684210526314,
+   "strictPass": 0.8333333333333334
+  },
+  "cur_interp": {
+   "n": 18,
+   "falseBarge": 0.7777777777777778,
+   "nEcho": 9,
+   "missed": 0,
+   "nUser": 9,
+   "userWordLoss": 0.17073170731707318,
+   "sttWordRecall": 0.9761904761904762,
+   "echoResidue": 0.2631578947368421,
+   "strictPass": 0.5
+  },
+  "latency": {
+   "speechToFinal": [
+    573,
+    539,
+    424,
+    685,
+    647,
+    624,
+    703,
+    626,
+    519,
+    473,
+    364,
+    551,
+    667,
+    651,
+    652,
+    736
+   ],
+   "afterEnd": [
+    408,
+    350,
+    0,
+    0,
+    0,
+    0,
+    306,
+    266,
+    0,
+    0,
+    0,
+    0,
+    315,
+    221,
+    0,
+    0,
+    0,
+    0,
+    350,
+    0,
+    278,
+    0,
+    350,
+    0,
+    298,
+    0
+   ],
+   "confirm_cur": [
+    511,
+    478,
+    437,
+    430,
+    783,
+    735
+   ],
+   "confirm_V1c": [
+    511,
+    1068,
+    796,
+    708,
+    783,
+    1809
+   ]
+  },
+  "clips": [
+   {
+    "id": "echo_p_g03_A1",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 487,
+    "confirmText": "tài xế",
+    "delivered": ""
+   },
+   {
+    "id": "echo_p_g07_A1",
+    "label": "echo_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": ""
+   },
+   {
+    "id": "echo_full_g05_A1",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 494,
+    "confirmText": "nghìn đồng",
+    "delivered": ""
+   },
+   {
+    "id": "barge_p_g03_A1",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 511,
+    "confirmText": "lấy dòng",
+    "delivered": "Tôi đổi sang ô tô đi."
+   },
+   {
+    "id": "barge_p_g07_uq_A1",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 478,
+    "confirmText": "tài xế",
+    "delivered": "Thôi đổi sang ô tô đi."
+   },
+   {
+    "id": "after_g035_A1",
+    "label": "user_after_ai",
+    "pass": true,
+    "confirmAt": 639,
+    "confirmText": "Đi",
+    "delivered": "Đi xe máy."
+   },
+   {
+    "id": "echo_p_g03_A2",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 445,
+    "confirmText": "Quận 1",
+    "delivered": ""
+   },
+   {
+    "id": "echo_p_g07_A2",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 501,
+    "confirmText": "cây số",
+    "delivered": "xe số"
+   },
+   {
+    "id": "echo_full_g05_A2",
+    "label": "echo_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": ""
+   },
+   {
+    "id": "barge_p_g03_A2",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 437,
+    "confirmText": "bạn",
+    "delivered": "Không, mình muốn đi Landmark 81."
+   },
+   {
+    "id": "barge_p_g07_uq_A2",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 430,
+    "confirmText": "Quận 1.",
+    "delivered": "Không, mình muốn đi Landmark 81."
+   },
+   {
+    "id": "after_g035_A2",
+    "label": "user_after_ai",
+    "pass": false,
+    "confirmAt": 424,
+    "confirmText": "Trung.",
+    "delivered": "Có, đặt đi."
+   },
+   {
+    "id": "echo_p_g03_A3",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 519,
+    "confirmText": "Honda",
+    "delivered": ""
+   },
+   {
+    "id": "echo_p_g07_A3",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 458,
+    "confirmText": "3",
+    "delivered": ""
+   },
+   {
+    "id": "echo_full_g05_A3",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 713,
+    "confirmText": "bạn",
+    "delivered": ""
+   },
+   {
+    "id": "barge_p_g03_A3",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 783,
+    "confirmText": "Dừng lại.",
+    "delivered": "Dừng lại."
+   },
+   {
+    "id": "barge_p_g07_uq_A3",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 735,
+    "confirmText": "Honda",
+    "delivered": "Dừng lại."
+   },
+   {
+    "id": "after_g035_A3",
+    "label": "user_after_ai",
+    "pass": true,
+    "confirmAt": 674,
+    "confirmText": "Được.",
+    "delivered": "Được rồi, cảm ơn nhé."
+   }
+  ]
+ },
+ "holdout": {
+  "cur": {
+   "n": 17,
+   "falseBarge": 0.7777777777777778,
+   "nEcho": 9,
+   "missed": 0.125,
+   "nUser": 8,
+   "userWordLoss": 0.0967741935483871,
+   "sttWordRecall": 0.96875,
+   "echoResidue": 0.1,
+   "strictPass": 0.5294117647058824
+  },
+  "V1": {
+   "n": 17,
+   "falseBarge": 0.3333333333333333,
+   "nEcho": 9,
+   "missed": 0.125,
+   "nUser": 8,
+   "userWordLoss": 0.0967741935483871,
+   "sttWordRecall": 0.96875,
+   "echoResidue": 0.1,
+   "strictPass": 0.7647058823529411
+  },
+  "V1c": {
+   "n": 17,
+   "falseBarge": 0.3333333333333333,
+   "nEcho": 9,
+   "missed": 0,
+   "nUser": 8,
+   "userWordLoss": 0,
+   "sttWordRecall": 0.96875,
+   "echoResidue": 0.11428571428571428,
+   "strictPass": 0.8235294117647058
+  },
+  "V2": {
+   "n": 17,
+   "falseBarge": 0.3333333333333333,
+   "nEcho": 9,
+   "missed": 0.125,
+   "nUser": 8,
+   "userWordLoss": 0.0967741935483871,
+   "sttWordRecall": 0.96875,
+   "echoResidue": 0.1,
+   "strictPass": 0.7647058823529411
+  },
+  "cur_interp": {
+   "n": 17,
+   "falseBarge": 0.8888888888888888,
+   "nEcho": 9,
+   "missed": 0,
+   "nUser": 8,
+   "userWordLoss": 0,
+   "sttWordRecall": 0.96875,
+   "echoResidue": 0.2714285714285714,
+   "strictPass": 0.5294117647058824
+  },
+  "latency": {
+   "speechToFinal": [
+    585,
+    507,
+    697,
+    727,
+    428,
+    443,
+    449,
+    613,
+    534,
+    393,
+    750
+   ],
+   "afterEnd": [
+    874,
+    392,
+    0,
+    0,
+    0,
+    302,
+    410,
+    0,
+    0,
+    0,
+    0,
+    275,
+    350,
+    0,
+    0,
+    0,
+    0
+   ],
+   "confirm_cur": [
+    664,
+    414,
+    592,
+    674,
+    null
+   ],
+   "confirm_V1c": [
+    664,
+    671,
+    890,
+    1261,
+    1716
+   ]
+  },
+  "clips": [
+   {
+    "id": "echo_p_g03_H1",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 1010,
+    "confirmText": "bệnh viện",
+    "delivered": ""
+   },
+   {
+    "id": "echo_p_g07_H1",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 506,
+    "confirmText": "cho bạn",
+    "delivered": "Chào bạn nhé."
+   },
+   {
+    "id": "echo_full_g05_H1",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 768,
+    "confirmText": "xe máy",
+    "delivered": ""
+   },
+   {
+    "id": "barge_p_g03_H1",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 664,
+    "confirmText": "để chỉ cho bạn nhé.",
+    "delivered": "Khoan, cho mình đổi sang ô tô."
+   },
+   {
+    "id": "after_g035_H1",
+    "label": "user_after_ai",
+    "pass": true,
+    "confirmAt": 460,
+    "confirmText": "đồng ý",
+    "delivered": "Được, đặt luôn đi."
+   },
+   {
+    "id": "echo_p_g03_H2",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 558,
+    "confirmText": "Xe",
+    "delivered": ""
+   },
+   {
+    "id": "echo_p_g07_H2",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 642,
+    "confirmText": "khoảng",
+    "delivered": "khoảng 400 m"
+   },
+   {
+    "id": "echo_full_g05_H2",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 659,
+    "confirmText": "tài xế",
+    "delivered": ""
+   },
+   {
+    "id": "barge_p_g03_H2",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 414,
+    "confirmText": "đầu tiên",
+    "delivered": "Huỷ chuyến này đi."
+   },
+   {
+    "id": "barge_p_g07_uq_H2",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 592,
+    "confirmText": "Xe",
+    "delivered": "Huỷ chuyến này đi."
+   },
+   {
+    "id": "after_g035_H2",
+    "label": "user_after_ai",
+    "pass": true,
+    "confirmAt": 598,
+    "confirmText": "nào",
+    "delivered": "Xe đầu tiên."
+   },
+   {
+    "id": "echo_p_g03_H3",
+    "label": "echo_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": ""
+   },
+   {
+    "id": "echo_p_g07_H3",
+    "label": "echo_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": ""
+   },
+   {
+    "id": "echo_full_g05_H3",
+    "label": "echo_only",
+    "pass": false,
+    "confirmAt": 499,
+    "confirmText": "Tây Tân.",
+    "delivered": ""
+   },
+   {
+    "id": "barge_p_g03_H3",
+    "label": "user_barge",
+    "pass": true,
+    "confirmAt": 674,
+    "confirmText": "Bạn đã",
+    "delivered": "Không cần đâu."
+   },
+   {
+    "id": "barge_p_g07_uq_H3",
+    "label": "user_barge",
+    "pass": false,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": ""
+   },
+   {
+    "id": "after_g035_H3",
+    "label": "user_after_ai",
+    "pass": true,
+    "confirmAt": 605,
+    "confirmText": "Có.",
+    "delivered": "Có, nằm sau nhé."
+   }
+  ]
+ },
+ "latency": {
+  "cur": {
+   "n": 12,
+   "falseBarge": null,
+   "nEcho": 0,
+   "missed": 0,
+   "nUser": 12,
+   "userWordLoss": 0,
+   "sttWordRecall": 1,
+   "echoResidue": null,
+   "strictPass": 1
+  },
+  "V1": {
+   "n": 12,
+   "falseBarge": null,
+   "nEcho": 0,
+   "missed": 0,
+   "nUser": 12,
+   "userWordLoss": 0,
+   "sttWordRecall": 1,
+   "echoResidue": null,
+   "strictPass": 1
+  },
+  "V1c": {
+   "n": 12,
+   "falseBarge": null,
+   "nEcho": 0,
+   "missed": 0,
+   "nUser": 12,
+   "userWordLoss": 0,
+   "sttWordRecall": 1,
+   "echoResidue": null,
+   "strictPass": 1
+  },
+  "V2": {
+   "n": 12,
+   "falseBarge": null,
+   "nEcho": 0,
+   "missed": 0,
+   "nUser": 12,
+   "userWordLoss": 0,
+   "sttWordRecall": 1,
+   "echoResidue": null,
+   "strictPass": 1
+  },
+  "cur_interp": {
+   "n": 12,
+   "falseBarge": null,
+   "nEcho": 0,
+   "missed": 0,
+   "nUser": 12,
+   "userWordLoss": 0,
+   "sttWordRecall": 1,
+   "echoResidue": null,
+   "strictPass": 1
+  },
+  "latency": {
+   "speechToFinal": [
+    451,
+    471,
+    536,
+    623,
+    532,
+    457,
+    763,
+    717,
+    493,
+    631,
+    613,
+    608
+   ],
+   "afterEnd": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    169,
+    0,
+    0,
+    0,
+    31,
+    0
+   ],
+   "confirm_cur": [],
+   "confirm_V1c": []
+  },
+  "clips": [
+   {
+    "id": "tail055_T1",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Cho mình đặt xe máy đi Chợ Bến Thành nhé."
+   },
+   {
+    "id": "tail080_T1",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Cho mình đặt xe máy đi Chợ Bến Thành nhé."
+   },
+   {
+    "id": "tail055_T2",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Không, mình muốn đi Landmark 81."
+   },
+   {
+    "id": "tail080_T2",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Không, mình muốn đi Landmark 81."
+   },
+   {
+    "id": "tail055_T3",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Đi xe máy."
+   },
+   {
+    "id": "tail080_T3",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Đi xe máy."
+   },
+   {
+    "id": "tail055_T4",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Huỷ chuyến này đi."
+   },
+   {
+    "id": "tail080_T4",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Huỷ chuyến này đi."
+   },
+   {
+    "id": "tail055_T5",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Có, đặt xe tới đó đi."
+   },
+   {
+    "id": "tail080_T5",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Có, đặt xe tới đó đi."
+   },
+   {
+    "id": "tail055_T6",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất."
+   },
+   {
+    "id": "tail080_T6",
+    "label": "user_only",
+    "pass": true,
+    "confirmAt": null,
+    "confirmText": null,
+    "delivered": "Mình muốn đi tới bệnh viện Chợ Rẫy, à không, sân bay Tân Sơn Nhất."
+   }
+  ]
+ }
+}

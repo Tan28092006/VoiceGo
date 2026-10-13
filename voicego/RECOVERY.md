@@ -1,5 +1,11 @@
 # 🚨 Link chết / bị treo — dựng lại trong ~10 phút
 
+> ℹ️ **Ghi chú 2026-10-11:** URL production hiện là https://voicego-9k11.onrender.com (Render free).
+> `voicego.res3pl.com` trả NXDOMAIN ngày này, nên các bước về domain/Cloudflare là **chưa xác minh**;
+> phần dựng lại bằng Blueprint `render.yaml` vẫn đúng. Khi chạy `smoke_test.sh`/`warmup.sh` hãy
+> truyền URL onrender, vì mặc định của 2 script là domain trên. Ngoài 3 secret bắt buộc, nên dán
+> thêm `GEMINI_API_KEY`: STT mặc định (Gemini Live) cần nó, thiếu thì lùi về Whisper.
+
 Runbook cho tình huống xấu nhất: sáng ngày chấm, `https://voicego.res3pl.com` không lên.
 Đọc từ trên xuống, **đừng bỏ bước 0** — 90% trường hợp là quota Render, không phải app hỏng.
 

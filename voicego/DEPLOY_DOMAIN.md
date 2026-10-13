@@ -1,5 +1,13 @@
 # 🌐 Deploy VoiceGo lên `voicego.res3pl.com` (Cloudflare)
 
+> ⚠️ **CHƯA XÁC MINH là hiện trạng (ghi chú 2026-10-11).** Ngày 2026-10-11 `voicego.res3pl.com`
+> trả NXDOMAIN (1.1.1.1 và 8.8.8.8). URL chính hiện là https://voicego-9k11.onrender.com
+> (Render free, 1 service Docker từ `render.yaml`). Phần custom domain/Cloudflare dưới đây là
+> hướng dẫn tuỳ chọn, chưa kiểm lại. Bảng env bên dưới cũng cũ: `FPT_API_KEY`/`TTS_PRIMARY`
+> không còn được code đọc; STT mặc định là Gemini Live (cần `GEMINI_API_KEY`), TTS mặc định là
+> giọng trình duyệt (`TTS_ENGINE`). Env hiện tại: `AGENTS.md` mục 3. Phần E (bẫy quota/uptime
+> monitor) vẫn đúng.
+
 Hướng dẫn end-to-end để app chạy tại **https://voicego.res3pl.com** — link ổn định,
 do bạn sở hữu, đổi nhà cung cấp bao nhiêu lần cũng **không phải đổi link nộp BTC**.
 

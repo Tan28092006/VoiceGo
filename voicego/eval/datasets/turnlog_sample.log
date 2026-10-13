@@ -1,0 +1,9 @@
+SAMPLE TỰ VIẾT (synthetic) để kiểm parser turnlog_report.mjs — KHÔNG phải số đo thật.
+useVoiceApp.js:412 [turn] {"id":1,"at":"2026-10-13T09:00:00.000Z","outcome":"done","engine":"gemini-live","finishReason":"maybeFinish","endpointToTextMs":120,"liveFinalMs":110,"t":{"speech":0,"endpoint":1900,"liveFinal":2010,"text":2020}}
+useVoiceApp.js:412 [turn] {"id":2,"at":"2026-10-13T09:00:10.000Z","outcome":"done","engine":"gemini-live","finishReason":"done","endpointToTextMs":380,"liveFinalMs":370,"bargeConfirmMs":640,"t":{"speech":0,"bargePause":0,"bargeConfirm":640,"endpoint":2600,"liveFinal":2970,"text":2980}}
+useVoiceApp.js:412 [turn] {"id":3,"at":"2026-10-13T09:00:20.000Z","outcome":"false-alarm","engine":"gemini-live","bargeFalseAlarmMs":1500,"t":{"speech":0,"bargePause":0,"bargeFalseAlarm":1500}}
+useVoiceApp.js:412 [turn] {"id":4,"at":"2026-10-13T09:00:30.000Z","outcome":"done","engine":"whisper","fallback":true,"finishReason":"dropped","whisperMs":2400,"endpointToTextMs":2450,"t":{"speech":0,"endpoint":1500,"whisperStart":1510,"whisperEnd":3910,"text":3950}}
+09:00:40.123 useVoiceApp.js:412 [turn] {"id":5,"at":"2026-10-13T09:00:40.000Z","outcome":"done","engine":"gemini-live","finishReason":"timeout","endpointToTextMs":1500,"newField":"x","t":{"speech":0,"endpoint":2100,"text":3600}}
+useVoiceApp.js:412 [turn] {"id":5,"at":"2026-10-13T09:00:40.000Z","outcome":"done","engine":"gemini-live","finishReason":"timeout","endpointToTextMs":1500,"newField":"x","t":{"speech":0,"endpoint":2100,"text":3600}}
+useVoiceApp.js:412 [turn] {"id":6, "broken json
+[liveStt] session san sang
